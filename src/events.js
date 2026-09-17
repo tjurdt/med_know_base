@@ -7,7 +7,7 @@ import { state, save, setView, itemById } from "./store.js";
 import { $ } from "./ui/toast.js";
 import { renderList } from "./ui/list.js";
 import { renderMain } from "./ui/item.js";
-import { fnodes, commitFlow, nextFid } from "./ui/flow-editor.js";
+import { fnodes, commitFlow, nextFid, flowPreviewHtml } from "./ui/flow-editor.js";
 import { rerender, openItem, newItem, addBlock, copySpec, exportAll, doImport, download, loadSample } from "./actions.js";
 
 export function initEvents() {
@@ -397,6 +397,10 @@ export function initEvents() {
         else e2.to = t.value;
       }
       commitFlow(blk, false);
+      // commitFlow(blk,false) 刻意不整個重繪節點卡片列表（見上面的註解），預覽容器
+      // 跟著同一個限制走，這裡直接局部更新它，不用等結構性操作才刷新。
+      const preview = document.querySelector(`[data-flowpreview="${blk.id}"]`);
+      if (preview) preview.innerHTML = flowPreviewHtml(blk);
       return;
     }
     const cid = t.dataset.cid;

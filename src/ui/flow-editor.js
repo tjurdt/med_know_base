@@ -1,5 +1,6 @@
 import { esc } from "../lib/util.js";
 import { parseFlow, serializeFlow } from "../lib/flow-parse.js";
+import { renderFlowSvg } from "../lib/flow-svg.js";
 import { state, save } from "../store.js";
 import { renderList } from "./list.js";
 import { renderMain } from "./item.js";
@@ -23,6 +24,15 @@ export function nextFid(nodes) {
   while (has("n" + i)) i++;
   return "n" + i;
 }
+
+// 給圖形編輯模式頂端的即時小預覽用；純文字輸入（節點文字/補充/出口標籤）不會整個
+// 重繪節點卡片列表（避免打字打到一半游標跳掉，見 commitFlow 的 structural 參數），
+// 所以 src/events.js 對應的 input 分支會直接呼叫這個函式局部更新預覽容器，而不是
+// 依賴 renderMain() 重繪。見 plan Stage 5b。
+export function flowPreviewHtml(blk) {
+  return renderFlowSvg(serializeFlow(fnodes(blk)));
+}
+
 export function renderFlowEditor(blk) {
   const nodes = fnodes(blk);
   if (state.flowRaw[blk.id]) {
@@ -34,7 +44,10 @@ export function renderFlowEditor(blk) {
   const opts = (id) =>
     `<option value="">（未指定）</option>` +
     nodes
-      .map((n) => `<option value="${esc(n.id)}" ${n.id === id ? "selected" : ""}>${esc((n.text || n.id).slice(0, 16))}</option>`)
+      .map(
+        (n) =>
+          `<option value="${esc(n.id)}" ${n.id === id ? "selected" : ""}>${esc((n.text || n.id).slice(0, 24))}（${esc(n.id)}）</option>`,
+      )
       .join("");
   const cards = nodes
     .map(
@@ -51,13 +64,14 @@ export function renderFlowEditor(blk) {
       <input class="tx" data-ftext value="${esc(n.text || "")}" placeholder="節點文字">
       <input class="notein" data-fnote value="${esc((n.notes || []).join("；"))}" placeholder="補充小字（選填）">
       ${(n.out || [])
-        .map(
-          (e, j) => `<div class="outrow" data-oi="${j}">
+        .map((e, j) => {
+          const dangling = e.to && !nodes.some((x) => x.id === e.to);
+          return `<div class="outrow" data-oi="${j}">
           <input data-flabel value="${esc(e.label || "")}" placeholder="${n.type === "Q" ? "選項文字" : "（無條件）"}">
           <select data-fto>${opts(e.to)}</select>
           <button class="x" data-odel title="移除出口">✕</button>
-        </div>`,
-        )
+        </div>${dangling ? '<div class="syntax" style="color:var(--warn);margin:-2px 0 4px 12px">找不到目標節點「' + esc(e.to) + '」，是不是原始碼模式打錯 id？</div>' : ""}`;
+        })
         .join("")}
       <div class="foot"><button class="btn bare" data-oadd>＋ 出口</button></div>
     </div>`,
@@ -65,6 +79,7 @@ export function renderFlowEditor(blk) {
     .join("");
   return `<div class="row" style="margin-bottom:8px">
       <button class="btn on" data-raw="0">圖形編輯</button><button class="btn" data-raw="1">原始碼</button></div>
+    <div class="flowpreview" data-flowpreview="${esc(blk.id)}" style="margin-bottom:12px;border:1px solid var(--line);border-radius:5px;padding:6px;background:var(--surf)">${flowPreviewHtml(blk)}</div>
     <div class="fe">${cards}
       <div class="row">${["Q", "A", "R", "N"].map((t) => `<button class="btn" data-fadd="${t}">＋ ${FTYPE[t]}</button>`).join("")}</div>
     </div>`;
