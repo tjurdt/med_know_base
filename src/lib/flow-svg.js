@@ -103,6 +103,28 @@ export function renderFlowSvg(src) {
     N: ["var(--n-bg)", "var(--n)"],
   };
 
+  // 跨層級的邊（例如 n1 直接連到 n3，跳過中間的 n2）如果照一般畫法直接從來源畫一條直線
+  // 到目標，單欄排版時會筆直穿過中間節點的方塊，又因為方塊是最後才畫、疊在邊的上面，
+  // 這條邊（連同標籤）會被完全蓋住、看起來像消失了。這裡幫這類邊改走圖表最右側的專屬
+  // 「車道」：先在來源列與下一列之間的空白帶（每個列之間本來就有 GAPY 的空白，橫向
+  // 走再遠都不會撞到任何節點）橫移過去，沿車道下降到目標列正上方的空白帶，再橫移進
+  // 目標。車道本身在 totalW 之外，不會跟任何節點方塊重疊。見 plan Stage 5a。
+  const LANE_GAP = 20,
+    LANE_STEP = 26;
+  const laneOf = new Map();
+  let laneCount = 0;
+  nodes.forEach((n) => {
+    const p = pos[n.id];
+    if (!p) return;
+    n.out.forEach((e) => {
+      const t = pos[e.to];
+      if (!t) return;
+      if (rank[e.to] - rank[n.id] > 1) laneOf.set(e, laneCount++);
+    });
+  });
+  const laneBaseX = totalW + LANE_GAP;
+  const totalWithLanes = laneCount ? laneBaseX + laneCount * LANE_STEP + 10 : totalW;
+
   let edges = "";
   nodes.forEach((n) => {
     const p = pos[n.id];
@@ -114,6 +136,20 @@ export function renderFlowSvg(src) {
         y1 = p.y + p.h,
         x2 = t.x + t.w / 2,
         y2 = t.y;
+      if (laneOf.has(e)) {
+        const laneX = laneBaseX + laneOf.get(e) * LANE_STEP;
+        const midY1 = p.y + rowH[rank[n.id]] + 14; // 用整列的高度，避免同列裡有更高的方塊時仍被切到
+        const midY2 = y2 - 14;
+        edges += `<path class="fedge" d="M${x1} ${y1} V${midY1} H${laneX} V${midY2} H${x2} V${y2}" marker-end="url(#ar)"/>`;
+        if (e.label) {
+          const ly = (midY1 + midY2) / 2;
+          const wpx = [...e.label].reduce((a, c) => a + (/[⺀-鿿]/.test(c) ? 11 : 6), 0);
+          edges +=
+            `<rect x="${laneX - wpx / 2 - 4}" y="${ly - 12}" width="${wpx + 8}" height="15" rx="3" fill="var(--paper)" stroke="var(--line)"/>` +
+            `<text class="felabel" x="${laneX}" y="${ly}" text-anchor="middle">${esc(e.label)}</text>`;
+        }
+        return;
+      }
       const down = y2 > y1;
       const my = down ? (y1 + y2) / 2 : y1 + 26;
       const d = down
@@ -149,7 +185,7 @@ export function renderFlowSvg(src) {
     });
     boxes += "</g>";
   });
-  return `<div class="flowscroll"><svg viewBox="0 0 ${Math.round(totalW)} ${Math.round(totalH)}" width="${Math.round(totalW)}" height="${Math.round(totalH)}" style="max-width:100%;height:auto">
+  return `<div class="flowscroll"><svg viewBox="0 0 ${Math.round(totalWithLanes)} ${Math.round(totalH)}" width="${Math.round(totalWithLanes)}" height="${Math.round(totalH)}" style="max-width:100%;height:auto">
     <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" fill="var(--ink-3)"/></marker></defs>
     ${edges}${boxes}</svg></div>`;
