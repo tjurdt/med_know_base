@@ -1,5 +1,5 @@
 import { esc } from "./util.js";
-import { parseFlow, wrap } from "./flow-parse.js";
+import { parseFlow, serializeFlow, wrap } from "./flow-parse.js";
 
 /* 分層佈局 → SVG */
 export function renderFlowSvg(src) {
@@ -12,7 +12,17 @@ export function renderFlowSvg(src) {
   const roots = nodes.filter((n) => !targeted.has(n.id)).map((n) => n.id);
   if (start && !roots.includes(start)) roots.unshift(start); // 第一個節點永遠算入口，迴路才不會被推到深層
   let queue = roots.map((id) => [id, 0]);
+  // 安全上限：一個合法 DAG 最壞情況下的走訪次數遠低於這個量級，只有真正的回饋迴路
+  // （例如 A -> B -> A）才會讓 rank[id] 永遠追不上 d、一直重複繞圈——那種情況下這裡
+  // 中斷排版，改用純文字列表呈現，而不是真的無限迴圈把分頁凍住。見 plan Stage 3。
+  const MAX_STEPS = (nodes.length + 1) * (nodes.length + 1) * 4 + 100;
+  let steps = 0;
+  let loopDetected = false;
   while (queue.length) {
+    if (++steps > MAX_STEPS) {
+      loopDetected = true;
+      break;
+    }
     const [id, d] = queue.shift();
     const n = map[id];
     if (!n) continue;
@@ -22,6 +32,12 @@ export function renderFlowSvg(src) {
     n.out.forEach((e) => {
       if (map[e.to]) queue.push([e.to, d + 1]);
     });
+  }
+  if (loopDetected) {
+    return (
+      '<p style="color:var(--warn)">偵測到流程圖裡有回饋迴路，圖形排版無法顯示，改用文字列出：</p>' +
+      `<pre style="white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-height:1.62">${esc(serializeFlow(nodes))}</pre>`
+    );
   }
   nodes.forEach((n) => {
     if (rank[n.id] === undefined) {

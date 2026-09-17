@@ -41,34 +41,45 @@ describe("merge", () => {
 
   it("adds new items and calls save/renderList", () => {
     const { db, save, renderList } = setup();
-    const n = merge({ items: [{ title: "低血鈉", blocks: [] }] }, db, save, renderList);
-    expect(n).toBe(1);
+    const r = merge({ items: [{ title: "低血鈉", blocks: [] }] }, db, save, renderList);
+    expect(r).toEqual({ total: 1, added: 1, updated: 0, keptAsNew: 0 });
     expect(db.items).toHaveLength(1);
     expect(save).toHaveBeenCalledTimes(1);
     expect(renderList).toHaveBeenCalledTimes(1);
   });
   it("ignores entries without a title", () => {
     const { db, save, renderList } = setup();
-    const n = merge({ items: [{ blocks: [] }] }, db, save, renderList);
-    expect(n).toBe(0);
+    const r = merge({ items: [{ blocks: [] }] }, db, save, renderList);
+    expect(r.total).toBe(0);
     expect(db.items).toHaveLength(0);
   });
   it("accepts a bare array or a single item object, not just {items:[...]}", () => {
     const { db, save, renderList } = setup();
-    expect(merge([{ title: "a", blocks: [] }], db, save, renderList)).toBe(1);
-    expect(merge({ title: "b", blocks: [] }, db, save, renderList)).toBe(1);
+    expect(merge([{ title: "a", blocks: [] }], db, save, renderList).total).toBe(1);
+    expect(merge({ title: "b", blocks: [] }, db, save, renderList).total).toBe(1);
     expect(db.items).toHaveLength(2);
   });
-  it(
-    "KNOWN ISSUE (tracked for Stage 3): importing an item with the same title as an " +
-      "existing one overwrites its blocks entirely instead of keeping both - this " +
-      "documents today's behavior so the fix in Stage 3 flips it to expect two items",
-    () => {
-      const { db, save, renderList } = setup();
-      merge({ items: [{ title: "低血鈉", blocks: [{ type: "text", src: "舊內容" }] }] }, db, save, renderList);
-      merge({ items: [{ title: "低血鈉", blocks: [{ type: "text", src: "新內容" }] }] }, db, save, renderList);
-      expect(db.items).toHaveLength(1);
-      expect(db.items[0].blocks[0].src).toBe("新內容");
-    },
-  );
+  it("updates an existing item in place when the imported entry carries its id", () => {
+    const { db, save, renderList } = setup();
+    merge({ items: [{ title: "低血鈉", blocks: [{ type: "text", src: "舊內容" }] }] }, db, save, renderList);
+    const existingId = db.items[0].id;
+    const r = merge(
+      { items: [{ id: existingId, title: "低血鈉", blocks: [{ type: "text", src: "新內容" }] }] },
+      db,
+      save,
+      renderList,
+    );
+    expect(r).toEqual({ total: 1, added: 0, updated: 1, keptAsNew: 0 });
+    expect(db.items).toHaveLength(1);
+    expect(db.items[0].blocks[0].src).toBe("新內容");
+  });
+  it("keeps a same-title-but-different-id import as a separate item instead of overwriting (Stage 3 fix)", () => {
+    const { db, save, renderList } = setup();
+    merge({ items: [{ title: "低血鈉", blocks: [{ type: "text", src: "舊內容" }] }] }, db, save, renderList);
+    const r = merge({ items: [{ title: "低血鈉", blocks: [{ type: "text", src: "新內容" }] }] }, db, save, renderList);
+    expect(r).toEqual({ total: 1, added: 0, updated: 0, keptAsNew: 1 });
+    expect(db.items).toHaveLength(2);
+    expect(db.items.map((i) => i.blocks[0].src)).toEqual(["舊內容", "新內容"]);
+    expect(db.items[0].id).not.toBe(db.items[1].id);
+  });
 });

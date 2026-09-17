@@ -8,23 +8,20 @@ import { renderFlowSvg } from "./lib/flow-svg.js";
 import { calcValues } from "./lib/calc.js";
 import { score, hl } from "./lib/search.js";
 import { strip, merge } from "./lib/data-io.js";
+import { load as loadStorage, STORAGE_KEY } from "./lib/storage.js";
 
 /* ============================ 儲存 ============================ */
-const KEY="clinical-kb.v1";
-let memOnly=false;
-function load(){
-  try{const raw=localStorage.getItem(KEY);if(raw)return JSON.parse(raw);}
-  catch(e){memOnly=true;}
-  return {format:"clinical-kb",version:1,items:[]};
-}
+const loaded=loadStorage(localStorage);
+let memOnly=loaded.memOnly;
+let db=loaded.db;
 function save(){
   if(memOnly)return;
-  try{localStorage.setItem(KEY,JSON.stringify(db));}
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(db));}
   catch(e){memOnly=true;document.getElementById("storageBanner").hidden=false;
     toast("本機儲存已滿或被封鎖，請用「匯出」保留資料");}
 }
-let db=load();
 if(memOnly)document.getElementById("storageBanner").hidden=false;
+if(loaded.quarantined)toast("本機資料格式看起來不對，已保留原始內容並改用空白知識庫");
 
 const $=s=>document.querySelector(s);
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;
@@ -569,10 +566,18 @@ function copySpec(){
     .then(()=>toast("規格已複製，貼給 AI 即可"),()=>toast("複製失敗，請手動選取"))
     :toast("複製失敗，請手動選取");
 }
+function mergeToast(r){
+  if(!r.total)return null;
+  const parts=[];
+  if(r.added)parts.push(`新增 ${r.added} 筆`);
+  if(r.updated)parts.push(`更新 ${r.updated} 筆`);
+  if(r.keptAsNew)parts.push(`同名保留為新詞條 ${r.keptAsNew} 筆`);
+  return parts.join("，");
+}
 function loadSample(){
   const data=JSON.parse(document.getElementById("sampleSrc").textContent);
-  const n=merge(data,db,save,renderList);$("#dlgGuide").close();
-  cur=db.items[db.items.length-1].id;openItem(cur);toast(`已載入示範詞條（${n} 筆）`);
+  const r=merge(data,db,save,renderList);$("#dlgGuide").close();
+  cur=db.items[db.items.length-1].id;openItem(cur);toast(mergeToast(r)||"沒有可載入的示範詞條");
 }
 function exportAll(){
   if(!db.items.length){toast("目前沒有資料可以匯出");return;}
@@ -584,10 +589,10 @@ function doImport(){
   const msg=$("#importMsg");
   try{
     const data=JSON.parse($("#importText").value);
-    const n=merge(data,db,save,renderList);
-    if(!n){msg.innerHTML='<span style="color:var(--warn)">找不到任何有 title 的詞條，請對照規格檢查。</span>';return;}
+    const r=merge(data,db,save,renderList);
+    if(!r.total){msg.innerHTML='<span style="color:var(--warn)">找不到任何有 title 的詞條，請對照規格檢查。</span>';return;}
     $("#dlgImport").close();$("#importText").value="";
-    cur=db.items[db.items.length-1].id;openItem(cur);toast(`匯入 ${n} 筆詞條`);
+    cur=db.items[db.items.length-1].id;openItem(cur);toast(mergeToast(r));
   }catch(err){msg.innerHTML='<span style="color:var(--warn)">JSON 解析失敗：'+esc(err.message)+"</span>";}
 }
 let pendingCsv=null,pendingImg=null;

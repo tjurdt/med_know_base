@@ -11,11 +11,15 @@ describe("renderFlowSvg", () => {
     expect((svg.match(/<g class="fnode">/g) || []).length).toBe(3);
     expect((svg.match(/<path class="fedge"/g) || []).length).toBe(2);
   });
-  // NOT tested here: a true back-reference cycle (e.g. "start -> a -> start") sends
-  // renderFlowSvg's rank BFS into an infinite loop with unbounded memory growth - the
-  // `rank[id] >= d` guard never trips because a pure cycle's `d` keeps increasing on
-  // every pass. Confirmed by hand-tracing the algorithm and by a worker crash when this
-  // case was exercised here. This is a pre-existing bug (present in clinical-kb-4.html
-  // too), not introduced by the Stage 1 extraction - reported to the user, not silently
-  // fixed, since it's outside this round's originally-scoped tech debt list.
+  it(
+    "degrades to a text listing instead of hanging on a true feedback cycle " +
+      "(Stage 3 fix - see git history for how this used to hang the whole worker)",
+    () => {
+      const svg = renderFlowSvg("A start: 開始\n  -> a\nA a: 下一步\n  -> start");
+      expect(svg).toContain("回饋迴路");
+      expect(svg).toContain("<pre");
+      expect(svg).toContain("A start: 開始");
+      expect(svg).not.toContain("<svg");
+    },
+  );
 });

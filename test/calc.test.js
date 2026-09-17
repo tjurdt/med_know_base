@@ -24,6 +24,23 @@ describe("parseCalc", () => {
     expect(c.dec).toBe(1);
     expect(c.bands).toEqual([{ min: 0, max: 1, text: "低" }]);
   });
+
+  it(
+    "keeps a number field whose label itself contains '(' or '=' (Stage 3 fix: " +
+      "the old regex made the whole field silently disappear instead of mis-parsing it)",
+    () => {
+      const c = parseCalc("number ratio: A(mg)/B(mg) 比值 = 1.5");
+      expect(c.fields).toEqual([{ kind: "number", id: "ratio", label: "A(mg)/B(mg) 比值", unit: "", def: 1.5 }]);
+    },
+  );
+  it("still parses unit and default when the label has no special characters", () => {
+    const c = parseCalc("number wt: 體重 (kg) = 60");
+    expect(c.fields[0]).toEqual({ kind: "number", id: "wt", label: "體重", unit: "kg", def: 60 });
+  });
+  it("handles a number field with only a label (no unit, no default)", () => {
+    const c = parseCalc("number score: 分數");
+    expect(c.fields[0]).toEqual({ kind: "number", id: "score", label: "分數", unit: "", def: "" });
+  });
 });
 
 describe("evalExpr", () => {

@@ -7,14 +7,26 @@ export function parseCalc(src) {
       const l = raw.trim();
       if (!l) return;
       let m;
-      if ((m = l.match(/^number\s+([A-Za-z_][\w]*)\s*:\s*([^(=]*)(?:\(([^)]*)\))?\s*(?:=\s*(-?[\d.]+))?$/))) {
-        c.fields.push({
-          kind: "number",
-          id: m[1],
-          label: m[2].trim(),
-          unit: (m[3] || "").trim(),
-          def: m[4] !== undefined ? +m[4] : "",
-        });
+      // number 的 label 允許含 "(" 或 "=" 這類跟語法本身重疊的字元（例如
+      // "A(mg)/B(mg) 比值"）：從字串尾端找 "= 預設值" 跟 "(單位)"，而不是像舊版
+      // 正則那樣讓 label 貪婪排除這兩個字元 —— 舊版遇到 label 內含 "(" 或 "="
+      // 時，正則會整條匹配失敗，導致這個欄位悄悄從計算機裡消失（不是解析錯，是
+      // 整個不見）。見 plan Stage 3。
+      if ((m = l.match(/^number\s+([A-Za-z_][\w]*)\s*:\s*(.+)$/))) {
+        let rest = m[2];
+        let def = "";
+        const defMatch = rest.match(/=\s*(-?[\d.]+)\s*$/);
+        if (defMatch) {
+          def = defMatch[1];
+          rest = rest.slice(0, defMatch.index);
+        }
+        let unit = "";
+        const unitMatch = rest.match(/\(([^)]*)\)\s*$/);
+        if (unitMatch) {
+          unit = unitMatch[1];
+          rest = rest.slice(0, unitMatch.index);
+        }
+        c.fields.push({ kind: "number", id: m[1], label: rest.trim(), unit: unit.trim(), def: def !== "" ? +def : "" });
         return;
       }
       if ((m = l.match(/^check\s+([A-Za-z_][\w]*)\s*:\s*(.*?)\s*(?:=\s*(-?[\d.]+))?$/))) {

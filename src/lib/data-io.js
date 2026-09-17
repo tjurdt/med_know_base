@@ -34,24 +34,38 @@ export function normBlock(b) {
 
 // db/save/renderList are passed in explicitly (rather than read off globals) so this
 // module has no dependency on the app shell's state; see plan Stage 1.
+//
+// Same-id matches are a deliberate update (the user re-imports their own exported file,
+// which carries the original id) and overwrite in place. Same-title-but-different-id
+// matches used to overwrite too, which silently destroyed the existing item's content
+// on any accidental name collision (e.g. importing someone else's sample data, or
+// re-generating AI output that happens to reuse a title). Those are now kept as a
+// separate new item instead, so a collision never loses data - see plan Stage 3.
 export function merge(data, db, save, renderList) {
   let items = [];
   if (Array.isArray(data)) items = data;
   else if (Array.isArray(data.items)) items = data.items;
   else if (data.title) items = [data];
-  let n = 0;
+  let added = 0,
+    updated = 0,
+    keptAsNew = 0;
   items.forEach((raw) => {
     if (!raw || !raw.title) return;
     const blocks = (raw.blocks || []).map(normBlock);
-    const exist = db.items.find((x) => (raw.id && x.id === raw.id) || x.title === raw.title);
-    if (exist) {
-      exist.subtitle = raw.subtitle || exist.subtitle;
-      exist.tags = raw.tags || exist.tags;
-      exist.blocks = blocks;
-    } else db.items.push({ id: raw.id || uid(), title: raw.title, subtitle: raw.subtitle || "", tags: raw.tags || [], blocks });
-    n++;
+    const existById = raw.id ? db.items.find((x) => x.id === raw.id) : undefined;
+    if (existById) {
+      existById.subtitle = raw.subtitle || existById.subtitle;
+      existById.tags = raw.tags || existById.tags;
+      existById.blocks = blocks;
+      updated++;
+      return;
+    }
+    const titleTaken = db.items.some((x) => x.title === raw.title);
+    db.items.push({ id: raw.id || uid(), title: raw.title, subtitle: raw.subtitle || "", tags: raw.tags || [], blocks });
+    if (titleTaken) keptAsNew++;
+    else added++;
   });
   save();
   renderList();
-  return n;
+  return { total: added + updated + keptAsNew, added, updated, keptAsNew };
 }
