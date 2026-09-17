@@ -1,4 +1,14 @@
 "use strict";
+import { uid, esc } from "./lib/util.js";
+import { KINDS } from "./lib/kinds.js";
+import { inlineMd, renderText, mdToHtml, htmlToMd } from "./lib/markdown.js";
+import { renderTable } from "./lib/csv.js";
+import { parseFlow, serializeFlow, nextFid } from "./lib/flow-parse.js";
+import { renderFlowSvg } from "./lib/flow-svg.js";
+import { calcValues } from "./lib/calc.js";
+import { score, hl } from "./lib/search.js";
+import { strip, merge } from "./lib/data-io.js";
+
 /* ============================ 儲存 ============================ */
 const KEY="clinical-kb.v1";
 let memOnly=false;
@@ -16,180 +26,17 @@ function save(){
 let db=load();
 if(memOnly)document.getElementById("storageBanner").hidden=false;
 
-const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
-const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const $=s=>document.querySelector(s);
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;
   document.body.appendChild(t);setTimeout(()=>t.remove(),2600);}
 
 /* ============================ 狀態 ============================ */
-const KINDS={
-  text:{icon:"📝",name:"文字"}, flow:{icon:"🔀",name:"流程圖"}, table:{icon:"📋",name:"表格"},
-  image:{icon:"🖼",name:"圖片"}, keywords:{icon:"🏷",name:"關鍵字"}, calc:{icon:"🧮",name:"計算機"}
-};
 const FTYPE={Q:"問題",A:"處置",R:"結論",N:"註記"};
 let cur=null, curTab=0, onePage=false, query="", listSel=-1;
 let edit={}, tools={}, metaOpen=false, flowState={}, flowCache={}, flowRaw={};
 const itemById=id=>db.items.find(i=>i.id===id);
 function setView(v){document.body.dataset.view=v;}
 const viewIs=v=>document.body.dataset.view===v;
-
-/* ============================ 簡化 Markdown ============================ */
-function inlineMd(s){
-  return esc(s).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
-}
-function renderText(src){
-  const lines=String(src||"").split(/\r?\n/);let out="",inUl=false;
-  const closeUl=()=>{if(inUl){out+="</ul>";inUl=false;}};
-  for(const raw of lines){
-    const l=raw.trim();
-    if(!l){closeUl();continue;}
-    if(/^#\s+/.test(l)){closeUl();out+="<h3>"+inlineMd(l.replace(/^#\s+/,""))+"</h3>";}
-    else{closeUl();out+="<p>"+inlineMd(l)+"</p>";}
-  }
-  closeUl();
-  return out||'<p style="color:var(--ink-3)">（尚無內容）</p>';
-}
-
-/* ============================ CSV ============================ */
-function parseCsv(txt){
-  const rows=[];let row=[],f="",q=false;const s=String(txt||"").replace(/\r\n?/g,"\n");
-  for(let i=0;i<s.length;i++){const c=s[i];
-    if(q){ if(c==='"'){ if(s[i+1]==='"'){f+='"';i++;} else q=false; } else f+=c; }
-    else if(c==='"')q=true;
-    else if(c===","||c==="\t"){row.push(f);f="";}
-    else if(c==="\n"){row.push(f);f="";rows.push(row);row=[];}
-    else f+=c;
-  }
-  if(f!==""||row.length){row.push(f);rows.push(row);}
-  return rows.filter(r=>r.some(x=>x.trim()!==""));
-}
-function renderTable(src,header){
-  const rows=parseCsv(src);
-  if(!rows.length)return '<p style="color:var(--ink-3)">（尚無資料，貼上 CSV 或讀入檔案）</p>';
-  const w=Math.max(...rows.map(r=>r.length));
-  const pad=r=>{const c=r.slice();while(c.length<w)c.push("");return c;};
-  let h="";
-  if(header!==false){h="<thead><tr>"+pad(rows[0]).map(c=>"<th>"+inlineMd(c.trim())+"</th>").join("")+"</tr></thead>";rows.shift();}
-  const b="<tbody>"+rows.map(r=>"<tr>"+pad(r).map(c=>"<td>"+inlineMd(c.trim())+"</td>").join("")+"</tr>").join("")+"</tbody>";
-  return '<div class="tbl"><table>'+h+b+"</table></div>";
-}
-
-/* ============================ 流程圖：解析 ============================ */
-function parseFlow(src){
-  const nodes=[];const map={};
-  const lines=String(src||"").split(/\r?\n/);
-  let last=null;
-  for(const raw of lines){
-    if(!raw.trim())continue;
-    const indented=/^\s/.test(raw);
-    const l=raw.trim();
-    const m=l.match(/^([QARNqarn])\s+([A-Za-z0-9_\-]+)\s*:\s*(.*)$/);
-    if(m&&!indented){
-      const n={id:m[2],type:m[1].toUpperCase(),text:m[3].trim(),out:[],notes:[]};
-      nodes.push(n);map[n.id]=n;last=n;continue;
-    }
-    if(!last)continue;
-    if(/^\*\s*/.test(l)){last.notes.push(l.replace(/^\*\s*/,""));continue;}
-    const e=l.match(/^(.*?)->\s*([A-Za-z0-9_\-]+)\s*$/);
-    if(e){last.out.push({label:e[1].trim(),to:e[2]});continue;}
-    if(m){const n={id:m[2],type:m[1].toUpperCase(),text:m[3].trim(),out:[],notes:[]};nodes.push(n);map[n.id]=n;last=n;}
-  }
-  return {nodes,map,start:nodes[0]?nodes[0].id:null};
-}
-
-/* 文字折行（中英混排估寬） */
-function wrap(text,maxCh){
-  const words=String(text).split(/(\s+)/);const lines=[];let line="";
-  const width=s=>[...s].reduce((a,c)=>a+(/[\u2E80-\u9FFF\uFF00-\uFFEF]/.test(c)?2:1),0);
-  for(const w of words){
-    if(width(line+w)>maxCh*2&&line.trim()){lines.push(line.trim());line=w.trim()?w:"";}
-    else line+=w;
-    while(width(line)>maxCh*2+4){
-      let cut="",i=0;const chars=[...line];
-      while(i<chars.length&&width(cut+chars[i])<=maxCh*2){cut+=chars[i++];}
-      lines.push(cut);line=chars.slice(i).join("");
-    }
-  }
-  if(line.trim())lines.push(line.trim());
-  return lines.length?lines:[""];
-}
-
-/* 分層佈局 → SVG */
-function renderFlowSvg(src){
-  const {nodes,map,start}=parseFlow(src);
-  if(!nodes.length)return '<p style="color:var(--ink-3)">（尚無流程，點「編輯」寫入節點）</p>';
-  const rank={};const order=[];
-  const targeted=new Set();nodes.forEach(n=>n.out.forEach(e=>targeted.add(e.to)));
-  const roots=nodes.filter(n=>!targeted.has(n.id)).map(n=>n.id);
-  if(start&&!roots.includes(start))roots.unshift(start);   // 第一個節點永遠算入口，迴路才不會被推到深層
-  let queue=roots.map(id=>[id,0]);
-  while(queue.length){
-    const [id,d]=queue.shift();const n=map[id];if(!n)continue;
-    if(rank[id]!==undefined&&rank[id]>=d)continue;
-    if(rank[id]===undefined)order.push(id);
-    rank[id]=d;
-    n.out.forEach(e=>{if(map[e.to])queue.push([e.to,d+1]);});
-  }
-  nodes.forEach(n=>{if(rank[n.id]===undefined){rank[n.id]=0;order.push(n.id);}});
-
-  const CW=8.2,LH=17,PADX=13,PADY=11,GAPX=26,GAPY=52,MAXCH=16;
-  const box={};
-  nodes.forEach(n=>{
-    const lines=wrap(n.text,MAXCH);
-    const notes=n.notes.length?wrap(n.notes.join("；"),MAXCH+4):[];
-    const w=Math.max(...lines.concat(notes).map(l=>[...l].reduce((a,c)=>a+(/[\u2E80-\u9FFF\uFF00-\uFFEF]/.test(c)?2:1),0)))*CW/2*1.02;
-    box[n.id]={lines,notes,w:Math.max(96,Math.min(230,w+PADX*2)),h:PADY*2+lines.length*LH+(notes.length?notes.length*14+4:0)};
-  });
-  const byRank={};order.forEach(id=>{(byRank[rank[id]]=byRank[rank[id]]||[]).push(id);});
-  const ranks=Object.keys(byRank).map(Number).sort((a,b)=>a-b);
-  const rowW={},rowH={};
-  ranks.forEach(r=>{rowW[r]=byRank[r].reduce((a,id)=>a+box[id].w+GAPX,-GAPX);rowH[r]=Math.max(...byRank[r].map(id=>box[id].h));});
-  const totalW=Math.max(...ranks.map(r=>rowW[r]))+40;
-  let y=18;const pos={};
-  ranks.forEach(r=>{
-    let x=(totalW-rowW[r])/2;
-    byRank[r].forEach(id=>{pos[id]={x,y,w:box[id].w,h:box[id].h};x+=box[id].w+GAPX;});
-    y+=rowH[r]+GAPY;
-  });
-  const totalH=y-GAPY+22;
-  const col={Q:["var(--q-bg)","var(--q)"],A:["var(--a-bg)","var(--a)"],R:["var(--r-bg)","var(--r)"],N:["var(--n-bg)","var(--n)"]};
-
-  let edges="";
-  nodes.forEach(n=>{
-    const p=pos[n.id];if(!p)return;
-    n.out.forEach((e,i)=>{
-      const t=pos[e.to];if(!t)return;
-      const x1=p.x+p.w/2,y1=p.y+p.h,x2=t.x+t.w/2,y2=t.y;
-      const down=y2>y1;
-      const my=down?(y1+y2)/2:y1+26;
-      const d=down
-        ? `M${x1} ${y1} V${my} H${x2} V${y2}`
-        : `M${x1} ${y1} V${my} H${x2+t.w/2+16} V${y2+t.h/2} H${t.x+t.w}`;
-      edges+=`<path class="fedge" d="${d}" marker-end="url(#ar)"/>`;
-      if(e.label){
-        const lx=down?(x1+x2)/2:x2+t.w/2+20, ly=down?my-4:my-4;
-        const wpx=[...e.label].reduce((a,c)=>a+(/[\u2E80-\u9FFF]/.test(c)?11:6),0);
-        edges+=`<rect x="${lx-wpx/2-4}" y="${ly-12}" width="${wpx+8}" height="15" rx="3" fill="var(--paper)" stroke="var(--line)"/>`
-             +`<text class="felabel" x="${lx}" y="${ly}" text-anchor="middle">${esc(e.label)}</text>`;
-      }
-    });
-  });
-  let boxes="";
-  nodes.forEach(n=>{
-    const p=pos[n.id];if(!p)return;const b=box[n.id];const[c1,c2]=col[n.type]||col.N;
-    boxes+=`<g class="fnode"><rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${n.type==="R"?12:7}" fill="${c1}" stroke="${c2}"/>`;
-    let ty=p.y+PADY+13;
-    b.lines.forEach(l=>{boxes+=`<text x="${p.x+p.w/2}" y="${ty}" text-anchor="middle" fill="var(--ink)" font-weight="${n.type==="Q"?600:500}">${esc(l)}</text>`;ty+=LH;});
-    ty+=2;
-    b.notes.forEach(l=>{boxes+=`<text x="${p.x+p.w/2}" y="${ty}" text-anchor="middle" fill="var(--ink-3)" font-size="11">${esc(l)}</text>`;ty+=14;});
-    boxes+="</g>";
-  });
-  return `<div class="flowscroll"><svg viewBox="0 0 ${Math.round(totalW)} ${Math.round(totalH)}" width="${Math.round(totalW)}" height="${Math.round(totalH)}" style="max-width:100%;height:auto">
-    <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="var(--ink-3)"/></marker></defs>
-    ${edges}${boxes}</svg></div>`;
-}
 
 /* 逐步模式 */
 function renderFlowStep(blk){
@@ -224,81 +71,6 @@ function renderFlowStep(blk){
     </div></div>`;
 }
 
-/* ============================ 計算機 ============================ */
-function parseCalc(src){
-  const c={fields:[],expr:"SUM",label:"結果",dec:0,bands:[]};
-  String(src||"").split(/\r?\n/).forEach(raw=>{
-    const l=raw.trim();if(!l)return;
-    let m;
-    if(m=l.match(/^number\s+([A-Za-z_][\w]*)\s*:\s*([^(=]*)(?:\(([^)]*)\))?\s*(?:=\s*(-?[\d.]+))?$/)){
-      c.fields.push({kind:"number",id:m[1],label:m[2].trim(),unit:(m[3]||"").trim(),def:m[4]!==undefined?+m[4]:""});return;}
-    if(m=l.match(/^check\s+([A-Za-z_][\w]*)\s*:\s*(.*?)\s*(?:=\s*(-?[\d.]+))?$/)){
-      c.fields.push({kind:"check",id:m[1],label:m[2].trim(),w:m[3]!==undefined?+m[3]:1});return;}
-    if(m=l.match(/^select\s+([A-Za-z_][\w]*)\s*:\s*([^|]*)\|(.*)$/)){
-      const opts=m[3].split("|").map(o=>{const p=o.split("=");return{label:p[0].trim(),value:+(p[1]||0)};}).filter(o=>o.label);
-      c.fields.push({kind:"select",id:m[1],label:m[2].trim(),opts});return;}
-    if(m=l.match(/^=\s*(.+)$/)){c.expr=m[1].trim();return;}
-    if(m=l.match(/^label\s+(.+)$/)){c.label=m[1].trim();return;}
-    if(m=l.match(/^dec\s+(\d+)$/)){c.dec=+m[1];return;}
-    if(m=l.match(/^band\s+(-?[\d.]+)\s*-\s*(-?[\d.]+)\s*:\s*(.+)$/)){c.bands.push({min:+m[1],max:+m[2],text:m[3].trim()});return;}
-  });
-  return c;
-}
-/* 安全運算式：遞迴下降，不用 eval */
-function evalExpr(src,vars){
-  let i=0;const s=String(src);
-  const ws=()=>{while(i<s.length&&/\s/.test(s[i]))i++;};
-  const eat=t=>{ws();if(s.startsWith(t,i)){i+=t.length;return true;}return false;};
-  const F={min:Math.min,max:Math.max,round:Math.round,floor:Math.floor,ceil:Math.ceil,abs:Math.abs,
-           sqrt:Math.sqrt,ln:Math.log,log:Math.log10,exp:Math.exp,pow:Math.pow};
-  function atom(){
-    ws();
-    if(eat("(")){const v=or();eat(")");return v;}
-    if(eat("-"))return -atom();
-    if(eat("+"))return atom();
-    let m=/^\d+(\.\d+)?/.exec(s.slice(i));
-    if(m){i+=m[0].length;return parseFloat(m[0]);}
-    m=/^[A-Za-z_][\w]*/.exec(s.slice(i));
-    if(m){
-      i+=m[0].length;const name=m[0];
-      if(eat("(")){
-        const args=[];if(!eat(")")){do{args.push(or());}while(eat(","));eat(")");}
-        if(name==="if")return args[0]?args[1]:args[2];
-        if(F[name])return F[name].apply(null,args);
-        return 0;
-      }
-      const v=vars[name];return typeof v==="number"&&isFinite(v)?v:0;
-    }
-    i++;return 0;
-  }
-  function pow(){let a=atom();ws();if(eat("^"))return Math.pow(a,pow());return a;}
-  function mul(){let a=pow();for(;;){ws();
-    if(eat("*"))a*=pow();else if(eat("/")){const b=pow();a=b===0?NaN:a/b;}
-    else if(eat("%"))a%=pow();else return a;}}
-  function add(){let a=mul();for(;;){ws();if(eat("+"))a+=mul();else if(eat("-"))a-=mul();else return a;}}
-  function cmp(){let a=add();for(;;){ws();
-    if(eat(">="))a=a>=add()?1:0;else if(eat("<="))a=a<=add()?1:0;
-    else if(eat("=="))a=a===add()?1:0;else if(eat("!="))a=a!==add()?1:0;
-    else if(eat(">"))a=a>add()?1:0;else if(eat("<"))a=a<add()?1:0;else return a;}}
-  function and(){let a=cmp();for(;;){ws();if(eat("&&"))a=(a&&cmp())?1:0;else return a;}}
-  function or(){let a=and();for(;;){ws();if(eat("||"))a=(a||and())?1:0;else return a;}}
-  const out=or();
-  return isFinite(out)?out:NaN;
-}
-function calcValues(blk){
-  const c=parseCalc(blk.src);const st=blk.state=blk.state||{};
-  const vars={};let sum=0;
-  c.fields.forEach(f=>{
-    let v;
-    if(f.kind==="check")v=st[f.id]?f.w:0;
-    else if(f.kind==="select")v=st[f.id]!==undefined?+st[f.id]:(f.opts[0]?f.opts[0].value:0);
-    else v=st[f.id]!==undefined&&st[f.id]!==""?+st[f.id]:(f.def===""?0:f.def);
-    vars[f.id]=v;sum+=v;
-  });
-  vars.SUM=sum;
-  const raw=evalExpr(c.expr,vars);
-  return {c,raw};
-}
 function renderCalc(blk){
   const {c,raw}=calcValues(blk);const st=blk.state=blk.state||{};
   if(!c.fields.length)return '<p style="color:var(--ink-3)">（尚無欄位，點「編輯」定義量表）</p>';
@@ -366,127 +138,11 @@ function mountCanvas(wrap,blk,editable){
   cv.addEventListener("pointerup",stop);cv.addEventListener("pointercancel",stop);
 }
 
-/* ============================ 搜尋 ============================ */
-function blockText(b){
-  if(b.type==="table")return (b.title||"")+" "+(b.desc||"")+" "+String(b.src||"").replace(/[,"]/g," ");
-  if(b.type==="flow")return (b.title||"")+" "+String(b.src||"").replace(/^[QARN]\s+[\w-]+:/gm," ").replace(/->/g," ");
-  if(b.type==="calc")return (b.title||"")+" "+(b.desc||"")+" "+String(b.src||"").replace(/^(number|check|select|=|label|dec|band)/gm," ");
-  return (b.title||"")+" "+(b.desc||"")+" "+String(b.src||"");
-}
-function score(item,qs){
-  const title=(item.title+" "+(item.subtitle||"")+" "+(item.tags||[]).join(" ")).toLowerCase();
-  const kws=(item.blocks||[]).filter(b=>b.type==="keywords").map(b=>b.src||"").join(",").toLowerCase();
-  let s=0,hit=null,hitTab=-1;
-  for(const t of qs){
-    if(title.includes(t))s+=10;
-    else if(kws.includes(t))s+=6;
-    else{
-      let found=false;
-      (item.blocks||[]).forEach((b,bi)=>{
-        if(found)return;
-        const txt=blockText(b);
-        const at=txt.toLowerCase().indexOf(t);
-        if(at>=0){found=true;s+=2;if(!hit){hit=txt.slice(Math.max(0,at-24),at+56).trim();hitTab=bi;}}
-      });
-      if(!found)return {s:0};
-    }
-  }
-  return {s,hit,hitTab};
-}
-function hl(txt,qs){
-  let out=esc(txt);
-  qs.forEach(t=>{if(!t)return;
-    out=out.replace(new RegExp("("+t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")","gi"),"<mark>$1</mark>");});
-  return out;
-}
-
-function strip(it){
-  const o={title:it.title,subtitle:it.subtitle||"",tags:it.tags||[],blocks:(it.blocks||[]).map(b=>{
-    const x={type:b.type};if(b.title)x.title=b.title;if(b.desc)x.desc=b.desc;
-    if(b.src)x.src=b.src;if(b.mode)x.mode=b.mode;if(b.header===false)x.header=false;
-    if((b.strokes||[]).length)x.strokes=b.strokes;return x;
-  })};
-  return o;
-}
-function normBlock(b){
-  const o={id:uid(),type:(b.type||"text").toLowerCase(),title:b.title||"",desc:b.desc||"",src:b.src||b.content||b.body||""};
-  if(!KINDS[o.type])o.type="text";
-  if(Array.isArray(b.src))o.src=b.src.join(", ");
-  if(o.type==="flow")o.mode=b.mode==="step"?"step":"page";
-  if(o.type==="table"&&b.header===false)o.header=false;
-  if(o.type==="image"){o.strokes=Array.isArray(b.strokes)?b.strokes:[];}
-  return o;
-}
-function merge(data){
-  let items=[];
-  if(Array.isArray(data))items=data;
-  else if(Array.isArray(data.items))items=data.items;
-  else if(data.title)items=[data];
-  let n=0;
-  items.forEach(raw=>{
-    if(!raw||!raw.title)return;
-    const blocks=(raw.blocks||[]).map(normBlock);
-    const exist=db.items.find(x=>(raw.id&&x.id===raw.id)||x.title===raw.title);
-    if(exist){exist.subtitle=raw.subtitle||exist.subtitle;exist.tags=raw.tags||exist.tags;exist.blocks=blocks;}
-    else db.items.push({id:raw.id||uid(),title:raw.title,subtitle:raw.subtitle||"",tags:raw.tags||[],blocks});
-    n++;
-  });
-  save();renderList();
-  return n;
-}
 function download(name,text){
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([text],{type:"application/json"}));
   a.download=name.replace(/[\\/:*?"<>|]/g,"_");a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-}
-
-/* ============================ 文字：MD <-> HTML ============================ */
-function mdToHtml(src){
-  const lines=String(src||"").split(/\r?\n/);
-  if(!lines.length||(lines.length===1&&!lines[0]))return "<div><br></div>";
-  return lines.map(l=>{
-    const t=l.trim();
-    if(/^#\s+/.test(t))return "<h3>"+inlineMd(t.replace(/^#\s+/,""))+"</h3>";
-    if(!t)return "<div><br></div>";
-    return "<div>"+inlineMd(l)+"</div>";
-  }).join("");
-}
-function inlineToMd(node){
-  let out="";
-  node.childNodes.forEach(n=>{
-    if(n.nodeType===3){out+=n.nodeValue.replace(/\u00a0/g," ");return;}
-    if(n.nodeType!==1)return;
-    const tag=n.tagName;
-    if(tag==="BR"){out+="\n";return;}
-    const inner=inlineToMd(n);
-    if(!inner.trim()){out+=inner;return;}
-    if(tag==="STRONG"||tag==="B")out+="**"+inner.trim()+"**";
-    else out+=inner;
-  });
-  return out;
-}
-function htmlToMd(el){
-  const parts=[];
-  el.childNodes.forEach(n=>{
-    if(n.nodeType===3){const t=n.nodeValue.replace(/\u00a0/g," ");if(t.trim())parts.push(t);return;}
-    if(n.nodeType!==1)return;
-    if(n.tagName==="BR"){parts.push("");return;}
-    const md=inlineToMd(n);
-    if(/^H[1-6]$/.test(n.tagName))parts.push("# "+md.trim());
-    else parts.push(md.replace(/\n+$/,""));
-  });
-  return parts.join("\n").replace(/\n{3,}/g,"\n\n").trim();
-}
-
-/* ============================ 流程圖：序列化 ============================ */
-function serializeFlow(nodes){
-  return nodes.map(n=>{
-    let s=n.type+" "+n.id+": "+(n.text||"");
-    (n.notes||[]).forEach(x=>{if(x.trim())s+="\n  * "+x.trim();});
-    (n.out||[]).forEach(e=>{if(e.to)s+="\n  "+(e.label?e.label+" ":"")+"-> "+e.to;});
-    return s;
-  }).join("\n");
 }
 function fnodes(blk){
   if(!flowCache[blk.id])flowCache[blk.id]=parseFlow(blk.src).nodes;
@@ -496,11 +152,6 @@ function commitFlow(blk,structural){
   blk.src=serializeFlow(fnodes(blk));
   flowState[blk.id]=null;save();
   if(structural)renderMain(); else renderList();
-}
-function nextFid(nodes){
-  let i=1;const has=id=>nodes.some(n=>n.id===id);
-  while(has("n"+i))i++;
-  return "n"+i;
 }
 function renderFlowEditor(blk){
   const nodes=fnodes(blk);
@@ -920,7 +571,7 @@ function copySpec(){
 }
 function loadSample(){
   const data=JSON.parse(document.getElementById("sampleSrc").textContent);
-  const n=merge(data);$("#dlgGuide").close();
+  const n=merge(data,db,save,renderList);$("#dlgGuide").close();
   cur=db.items[db.items.length-1].id;openItem(cur);toast(`已載入示範詞條（${n} 筆）`);
 }
 function exportAll(){
@@ -933,7 +584,7 @@ function doImport(){
   const msg=$("#importMsg");
   try{
     const data=JSON.parse($("#importText").value);
-    const n=merge(data);
+    const n=merge(data,db,save,renderList);
     if(!n){msg.innerHTML='<span style="color:var(--warn)">找不到任何有 title 的詞條，請對照規格檢查。</span>';return;}
     $("#dlgImport").close();$("#importText").value="";
     cur=db.items[db.items.length-1].id;openItem(cur);toast(`匯入 ${n} 筆詞條`);
