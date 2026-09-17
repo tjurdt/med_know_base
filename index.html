@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>臨床知識庫</title>
+<style>
+:root{
+  color-scheme:light;
+  --paper:#faf6f0; --surf:#fffdf9; --ink:#2a2420; --ink-2:#4e453e; --ink-3:#8a7d73;
+  --line:#e3d9cc; --line-2:#efe8dd; --accent:#a0562f; --accent-soft:#f6e9dd;
+  --q:#4b6675; --q-bg:#e9eff2; --a:#8a5a17; --a-bg:#f8eeda; --r:#5b7143; --r-bg:#ecf0e3;
+  --n:#8a7d73; --n-bg:#f1ebe2; --warn:#9c3327;
+  --sans:"Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,"Segoe UI",sans-serif;
+  --mono:"SFMono-Regular",Menlo,Consolas,monospace;
+  --tap:40px;
+}
+*{box-sizing:border-box}
+body{margin:0;height:100dvh;display:flex;font-family:var(--sans);color:var(--ink);
+     background:var(--paper);font-size:15px;line-height:1.62;-webkit-text-size-adjust:100%}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+h1,h2,h3{font-weight:650;letter-spacing:-.005em;margin:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+#side{width:286px;flex:0 0 286px;border-right:1px solid var(--line);background:var(--surf);
+      display:flex;flex-direction:column;min-width:0}
+#main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+
+/* 索引 */
+.bar{display:flex;align-items:center;gap:4px;min-height:var(--tap);padding:0 6px 0 14px;flex:0 0 auto}
+.bar h1{font-size:15px;flex:1;min-width:0}
+.bar .ttl{font-size:16.5px;font-weight:650;flex:1;min-width:0;overflow:hidden;
+          text-overflow:ellipsis;white-space:nowrap}
+.bar .ttl[contenteditable]:focus{white-space:normal;outline:none;box-shadow:inset 0 -1px 0 var(--accent)}
+.ib{min-width:var(--tap);height:var(--tap);display:inline-flex;align-items:center;justify-content:center;
+    gap:5px;padding:0 10px;color:var(--ink-3);font-size:14px;border-radius:5px}
+.ib:hover,.ib:active{color:var(--accent);background:var(--accent-soft)}
+.ib.big{font-size:22px;line-height:1}
+.ib.on{color:var(--accent)}
+.searchwrap{padding:2px 12px 9px;flex:0 0 auto}
+#q{width:100%;height:var(--tap);padding:0 10px;border:1px solid var(--line);border-radius:5px;background:var(--paper)}
+#list{flex:1;overflow:auto;border-top:1px solid var(--line-2);-webkit-overflow-scrolling:touch}
+.entry{display:block;width:100%;text-align:left;padding:10px 14px;min-height:52px;
+       border-bottom:1px solid var(--line-2);border-left:3px solid transparent}
+.entry:active{background:var(--accent-soft)}
+.entry.on{border-left-color:var(--accent);background:var(--accent-soft)}
+.entry .t{font-weight:600;font-size:15px}
+.entry .s{font-size:12px;color:var(--ink-3);margin-top:2px}
+.entry .hit{font-size:12px;color:var(--ink-3);margin-top:5px;padding-left:8px;border-left:2px solid var(--line)}
+.entry mark{background:none;color:var(--accent);font-weight:600}
+.sidefoot{display:flex;align-items:center;padding:0 8px;border-top:1px solid var(--line-2);flex:0 0 auto}
+.empty{color:var(--ink-3);font-size:13.5px;padding:18px 14px}
+
+/* 詞條 */
+.meta{padding:0 14px 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;
+      color:var(--ink-3);flex:0 0 auto}
+.meta .sub{flex:1;min-width:130px}
+.meta .sub:empty:before,.btitle:empty:before{content:attr(data-ph);color:var(--ink-3)}
+.tag{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);border-bottom:1px solid var(--line)}
+
+.tabbar{display:flex;align-items:stretch;border-top:1px solid var(--line-2);
+        border-bottom:1px solid var(--line);background:var(--surf);overflow-x:auto;
+        scrollbar-width:none;flex:0 0 auto;padding-left:8px}
+.tabbar::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;display:flex;align-items:center;gap:6px;height:var(--tap);padding:0 12px;
+     color:var(--ink-3);border-top:2px solid transparent;font-family:var(--mono);font-size:13px}
+.tab .g{font-family:var(--sans);font-size:15px;line-height:1}
+.tab.on{color:var(--ink);border-top-color:var(--accent);background:var(--paper)}
+.tab.on .nm{font-family:var(--sans);font-weight:600;max-width:9em;overflow:hidden;
+            text-overflow:ellipsis;white-space:nowrap}
+.tabadd{flex:0 0 auto;width:var(--tap);height:var(--tap);color:var(--ink-3);font-size:20px}
+.tabadd:active{color:var(--accent)}
+.flip{margin-left:auto;flex:0 0 auto;height:var(--tap);padding:0 13px;font-size:12.5px;
+      color:var(--ink-3);border-left:1px solid var(--line-2)}
+.flip.on{color:var(--accent)}
+
+#stage{flex:1;overflow:auto;padding:16px 18px 80px;-webkit-overflow-scrolling:touch}
+.stagewrap{max-width:880px}
+
+/* 區塊 */
+.block{margin:0 0 28px}
+.block.solo{margin:0}
+.bhead{display:flex;align-items:center;gap:8px;min-height:32px;margin-bottom:10px}
+.bmark{flex:0 0 auto;font-size:12px;color:var(--ink-3);font-family:var(--mono)}
+.bmark i{font-style:normal;font-size:15px;margin-right:3px}
+.btitle{font-weight:650;font-size:16.5px;flex:1;min-width:0}
+.btitle[contenteditable]:focus{outline:none;box-shadow:inset 0 -1px 0 var(--accent)}
+.bacts{display:flex;gap:2px;flex:0 0 auto;align-items:center}
+.bdesc{font-size:13px;color:var(--ink-3);margin:-4px 0 11px}
+.bdesc:empty:before{content:attr(data-ph)}
+.block.one>.bhead{border-top:1px solid var(--line);padding-top:10px}
+textarea.src{width:100%;min-height:190px;border:1px solid var(--line);border-radius:5px;padding:9px 11px;
+  background:var(--surf);font-family:var(--mono);font-size:13px;line-height:1.7;resize:vertical}
+.btn{border:1px solid var(--line);border-radius:5px;padding:7px 11px;font-size:13px;color:var(--ink-2);
+     background:var(--surf);min-height:34px}
+.btn:active{border-color:var(--accent);color:var(--accent)}
+.btn.on{background:var(--accent);border-color:var(--accent);color:var(--surf)}
+.btn.danger{color:var(--warn)}
+.btn.bare{border-color:transparent;background:none;color:var(--ink-3);padding:7px 9px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+/* 文字 */
+.rt{font-size:15.5px}
+.rt h3{font-size:15.5px;margin:20px 0 4px;color:var(--accent)}
+.rt h3:first-child{margin-top:0}
+.rt p,.rt div{margin:8px 0;max-width:68ch}
+.rt strong{font-weight:700;box-shadow:inset 0 -.38em 0 var(--accent-soft)}
+.wys{border:1px solid var(--line);border-radius:5px;background:var(--surf);padding:10px 12px;
+     min-height:180px;font-size:15.5px}
+.wys:focus{outline:none;border-color:var(--accent)}
+.wys h3{color:var(--accent);font-size:15.5px;margin:16px 0 4px}
+.wys h3:first-child{margin-top:0}
+.wys div,.wys p{margin:7px 0}
+.wystools{display:flex;gap:6px;margin-bottom:8px;position:sticky;top:-16px;background:var(--paper);
+          padding:6px 0;z-index:2}
+
+/* 表格 */
+.tbl{overflow:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:7px 12px 7px 2px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line-2)}
+th{font-weight:650;border-bottom:1px solid var(--ink-3);white-space:nowrap;position:sticky;top:0;background:var(--paper)}
+
+/* 圖片 */
+.canvaswrap{position:relative;display:block;width:100%;border:1px solid var(--line);overflow:hidden;background:var(--surf)}
+.canvaswrap img{display:block;width:100%;height:auto}
+.canvaswrap canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.drawtools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:9px}
+.swatch{width:26px;height:26px;border-radius:50%;border:1px solid var(--line)}
+.swatch.on{box-shadow:0 0 0 2px var(--accent)}
+
+/* 關鍵字 */
+.kw{display:flex;gap:5px 14px;flex-wrap:wrap;font-family:var(--mono);font-size:13px;color:var(--ink-2)}
+.kw span:before{content:"# ";color:var(--ink-3)}
+
+/* 流程圖 */
+.flowbar{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.flowscroll{overflow:auto;margin:0 -18px;padding:4px 18px}
+.fnode text{font-family:var(--sans);font-size:12.5px}
+.fedge{fill:none;stroke:var(--ink-3);stroke-width:1.1}
+.felabel{font-size:11.5px;fill:var(--ink-2);font-family:var(--sans)}
+
+/* 流程圖編輯器 */
+.fe{display:flex;flex-direction:column;gap:10px}
+.fnodecard{border:1px solid var(--line);border-left:3px solid var(--n);border-radius:5px;
+           background:var(--surf);padding:9px 11px}
+.fnodecard.q{border-left-color:var(--q)}.fnodecard.a{border-left-color:var(--a)}
+.fnodecard.r{border-left-color:var(--r)}
+.fnodecard .top{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.fnodecard .id{font-family:var(--mono);font-size:11px;color:var(--ink-3);flex:0 0 auto}
+.seg{display:flex;flex:0 0 auto;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{padding:5px 9px;font-size:12.5px;color:var(--ink-3);border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent);color:var(--surf)}
+.fnodecard input.tx{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:5px;
+                    background:var(--paper);font-size:15px}
+.outrow{display:flex;gap:5px;align-items:center;margin-top:6px;padding-left:12px;
+        border-left:1px dashed var(--line)}
+.outrow input{flex:1;min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:5px;
+              background:var(--paper);font-size:13.5px}
+.outrow select{flex:1;min-width:0;padding:6px 6px;border:1px solid var(--line);border-radius:5px;
+               background:var(--paper);font-size:13.5px}
+.outrow .x{color:var(--ink-3);padding:4px 7px;font-size:16px}
+.fnodecard .foot{display:flex;gap:4px;margin-top:7px;align-items:center}
+.notein{width:100%;margin-top:6px;padding:6px 8px;border:1px dashed var(--line);border-radius:5px;
+        background:var(--paper);font-size:13px;color:var(--ink-2)}
+
+/* 逐步 */
+.step{max-width:640px}
+.trail{margin-bottom:14px;padding-left:11px;border-left:1px solid var(--line)}
+.trailrow{font-size:12.5px;color:var(--ink-3);display:flex;gap:7px}
+.trailrow b{color:var(--ink-2);font-weight:600}
+.stepcard{border-left:3px solid var(--n);padding:2px 0 0 14px}
+.stepcard.q{border-left-color:var(--q)}.stepcard.a{border-left-color:var(--a)}
+.stepcard.r{border-left-color:var(--r)}
+.steplab{font-size:11.5px;color:var(--ink-3);font-family:var(--mono);letter-spacing:.08em}
+.stepq{font-size:19px;font-weight:650;line-height:1.42;margin-top:2px}
+.stepdetail{font-size:13.5px;color:var(--ink-2);margin-top:8px}
+.stepdetail ul{margin:4px 0;padding-left:16px}
+.opts{display:flex;flex-direction:column;margin-top:16px;border-top:1px solid var(--line)}
+.opt{text-align:left;padding:14px 2px;font-size:16px;display:flex;gap:11px;align-items:center;
+     border-bottom:1px solid var(--line-2);min-height:52px}
+.opt:active{color:var(--accent)}
+.opt .k{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:3px;
+        padding:1px 5px;color:var(--ink-3);flex:0 0 auto}
+.opt .ar{margin-left:auto;color:var(--ink-3)}
+.stepnav{display:flex;gap:6px;margin-top:14px}
+
+/* 計算機 */
+.calcgrid{display:grid;grid-template-columns:1fr auto;gap:0 14px;align-items:center;max-width:560px}
+.calcgrid label{font-size:14.5px;padding:9px 0;border-bottom:1px solid var(--line-2)}
+.calcgrid .u{font-size:12px;color:var(--ink-3)}
+.calcgrid input[type=number],.calcgrid select{width:118px;padding:6px 8px;border:1px solid var(--line);
+  border-radius:5px;background:var(--surf);font-variant-numeric:tabular-nums;text-align:right}
+.chkrow{display:flex;align-items:center;gap:11px;grid-column:1/-1;padding:10px 0;
+        border-bottom:1px solid var(--line-2)}
+.chkrow input{width:20px;height:20px;accent-color:var(--accent);flex:0 0 auto}
+.chkrow label{border:0;padding:0;flex:1}
+.chkrow .w{font-size:11.5px;color:var(--ink-3);font-family:var(--mono)}
+.result{margin-top:18px;padding-left:14px;border-left:3px solid var(--accent);max-width:560px}
+.result .val{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.05}
+.result .note{font-size:12.5px;color:var(--ink-3);font-family:var(--mono)}
+.result .band{margin-top:4px;font-size:14.5px;font-weight:600}
+
+/* 對話框 */
+dialog{border:1px solid var(--line);border-radius:7px;padding:0;background:var(--surf);color:var(--ink);
+       max-width:min(820px,94vw);width:100%}
+dialog::backdrop{background:rgba(10,14,13,.46)}
+.dhead{display:flex;align-items:center;gap:6px;padding:6px 8px 6px 14px;border-bottom:1px solid var(--line-2)}
+.dhead h3{font-size:15px;flex:1}
+.dbody{padding:14px;max-height:70vh;overflow:auto}
+pre.spec{white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-height:1.62;margin:0;color:var(--ink-2)}
+.picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px}
+.picker button{border:1px solid var(--line-2);border-radius:5px;padding:13px 12px;text-align:left;min-height:62px}
+.picker button:active{border-color:var(--accent);color:var(--accent)}
+.picker b{display:block;font-size:15px;font-weight:600}
+.picker small{color:var(--ink-3);font-size:12px}
+.syntax{font-size:12px;color:var(--ink-3);margin-top:7px;font-family:var(--mono);white-space:pre-wrap}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);
+       color:var(--paper);padding:9px 16px;border-radius:5px;font-size:13.5px;z-index:99}
+.banner{background:var(--a-bg);color:var(--a);font-size:12px;padding:6px 14px;flex:0 0 auto}
+
+body[data-view="item"] #side{display:none}
+body[data-view="list"] #main{display:none}
+@media (max-width:899px){
+  #side{width:auto;flex:1 1 auto;border-right:0}
+  #stage{padding:14px 14px 80px}
+  .flowscroll{margin:0 -14px;padding:4px 14px}
+}
+@media (min-width:900px){
+  body[data-view="item"] #side,body[data-view="list"] #main{display:flex}
+  .back{display:none}
+}
+</style>
+</head>
+<body data-view="list">
+
+<aside id="side">
+  <div class="bar">
+    <h1>臨床知識庫</h1>
+    <button class="ib big" id="newItem" title="新增詞條">＋</button>
+  </div>
+  <div class="searchwrap">
+    <input id="q" type="search" placeholder="搜尋詞條、關鍵字、內文" autocomplete="off">
+  </div>
+  <div id="list"></div>
+  <div class="sidefoot">
+    <button class="ib" id="importBtn">匯入</button>
+    <button class="ib" id="exportBtn">匯出</button>
+    <span style="flex:1"></span>
+    <button class="ib" id="guideBtn">AI 指南</button>
+  </div>
+</aside>
+
+<main id="main">
+  <div id="storageBanner" class="banner" hidden>此環境不能寫入本機儲存，編輯不會保存，請用「匯出」帶走。</div>
+  <div id="mainInner" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+</main>
+
+<input type="file" id="fileJson" accept=".json,application/json" hidden>
+<input type="file" id="fileCsv" accept=".csv,.tsv,.txt" hidden>
+<input type="file" id="fileImg" accept="image/*" hidden>
+
+<dialog id="dlgPick">
+  <div class="dhead"><h3>新增分頁</h3><button class="ib" data-close>關閉</button></div>
+  <div class="dbody">
+    <div class="picker">
+      <button data-kind="text"><b>📝 文字</b><small>標題與粗體</small></button>
+      <button data-kind="flow"><b>🔀 機制／流程圖</b><small>整張圖或逐步問答</small></button>
+      <button data-kind="table"><b>📋 表格</b><small>貼上或讀入 CSV</small></button>
+      <button data-kind="image"><b>🖼 圖片／塗鴉</b><small>上傳後可畫記</small></button>
+      <button data-kind="keywords"><b>🏷 關鍵字</b><small>只影響搜尋</small></button>
+      <button data-kind="calc"><b>🧮 計算機</b><small>量表與公式</small></button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlgGuide">
+  <div class="dhead"><h3>AI 匯入指南</h3>
+    <button class="ib" id="copySpec">複製規格</button>
+    <button class="ib" id="loadSample">載入示範</button>
+    <button class="ib" data-close>關閉</button></div>
+  <div class="dbody"><pre class="spec" id="specBox"></pre></div>
+</dialog>
+
+<dialog id="dlgImport">
+  <div class="dhead"><h3>匯入</h3><button class="ib" data-close>關閉</button></div>
+  <div class="dbody">
+    <p style="margin-top:0;font-size:13.5px;color:var(--ink-3)">貼上符合規格的 JSON，或選檔案。同名／同 id 的詞條會被更新，其餘新增。</p>
+    <textarea class="src" id="importText" style="min-height:220px" placeholder='{"format":"clinical-kb","version":1,"items":[…]}'></textarea>
+    <div class="row" style="margin-top:9px">
+      <button class="btn" id="pickJson">選擇 .json 檔</button>
+      <button class="btn on" id="doImport">匯入</button>
+    </div>
+    <div id="importMsg" style="margin-top:9px;font-size:13px"></div>
+  </div>
+</dialog>
+
+<script type="text/plain" id="specSrc">
+臨床知識庫 — 匯入格式規格 v2
+========================================
+一個臨床主題 = 一個「詞條 item」，詞條裡放多個「區塊 block」。
+每個區塊的內容都是純文字字串 src，所以整份檔案很小。
+
+外層
+------------------------------------------------
+{ "format":"clinical-kb", "version":1, "items":[ item, ... ] }
+
+item
+------------------------------------------------
+{
+  "title":    "低血鈉 Hyponatremia",     // 必填
+  "subtitle": "成人診斷與處置",           // 選填
+  "tags":     ["電解質","內科"],          // 選填
+  "blocks":   [ block, ... ]             // 順序即分頁順序
+}
+
+block 共通欄位
+------------------------------------------------
+  "type"  : text | flow | table | image | keywords | calc
+  "title" : 分頁標題（選填；留空顯示編號）
+  "desc"  : 一行說明（table / image / calc 可用）
+  "src"   : 內容，格式依 type 而定
+
+1) type:"text" — 文字
+------------------------------------------------
+只有兩種標記：
+  # 標題          → 一層標題
+  **粗體**        → 行內粗體
+空行分段。沒有條列功能，需要並列項目就一行一句。
+例：
+  "src": "# 定義\n血鈉 < 135 mmol/L。**嚴重**指 < 120 或有神經症狀。\n\n# 陷阱\n先排除 pseudohyponatremia。"
+
+2) type:"flow" — 機制圖／流程圖
+------------------------------------------------
+額外欄位 "mode": "page"（整張圖，預設）或 "step"（逐步問答）；使用者隨時可切。
+語法：每個節點一行，接著縮排寫出口。
+  節點行： <類型> <id>: <文字>
+  類型：   Q 問題（分支）／A 處置／R 結論／N 註記（機制圖用 N）
+  出口行： 縮排兩格，"<選項文字> -> <目標id>"，無條件時 "-> <目標id>"
+  補充行： 縮排兩格，"* <小字說明>"
+第一個節點是入口。多條出口指向同一 id 會合流；指回前面的 id 就是回饋迴路。
+例：
+  "src": "Q start: 有神經學症狀？\n  有 -> hs\n  沒有 -> vol\nA hs: 3% NaCl 100 mL 推注\n  * 24 小時內升高 <= 8 mmol/L\n  -> vol\nQ vol: 容積狀態？\n  低 -> lo\n  等 -> eu\n  高 -> hi\nR lo: 腸胃道流失、利尿劑\nR eu: SIADH、甲狀腺低下\nR hi: 心衰竭、肝硬化、腎病症候群"
+
+3) type:"table" — 表格
+------------------------------------------------
+"src" 放 CSV，第一列當表頭（不要表頭時加 "header": false）。含逗號的欄位用雙引號包住。
+例：
+  "src": "藥物,劑量,注意\nFurosemide,20-40 mg IV,追尿量\nSpironolactone,25 mg PO qd,\"eGFR<30 避免\""
+
+4) type:"image" — 圖片／塗鴉
+------------------------------------------------
+AI 通常無法提供圖檔，只要產生空殼讓使用者自己上傳：
+  { "type":"image", "title":"胸部 X 光", "desc":"箭頭處為…" }
+
+5) type:"keywords" — 搜尋關鍵字
+------------------------------------------------
+"src" 用逗號或換行分隔。中英文、縮寫、同義詞、口語說法都放，只影響搜尋。
+例： "src": "hyponatremia, 低血鈉, SIADH, 3% saline"
+
+6) type:"calc" — 量表／公式計算機
+------------------------------------------------
+"src" 行導向語法：
+  number <id>: <標籤> (<單位>) [= <預設值>]
+  check  <id>: <標籤> = <勾選分數>
+  select <id>: <標籤> | <選項>=<值> | <選項>=<值> ...
+  = <運算式>              SUM 代表所有欄位相加
+  label <結果名稱>
+  dec <小數位數>          預設 0
+  band <下限>-<上限>: <判讀>
+運算式可用 + - * / ^ ( )、min max round floor ceil abs sqrt ln log exp pow、
+if(條件,真,假)、> >= < <= == !=、&& ||。
+例（CHA2DS2-VASc）：
+  "src": "check chf: 心衰竭 = 1\ncheck htn: 高血壓 = 1\nselect age: 年齡 | <65=0 | 65-74=1 | >=75=2\ncheck dm: 糖尿病 = 1\ncheck stroke: 中風／TIA = 2\ncheck vasc: 血管疾病 = 1\ncheck sex: 女性 = 1\n= SUM\nlabel 分數\nband 0-0: 低風險\nband 1-1: 中風險\nband 2-9: 高風險"
+例（公式）：
+  "src": "number cr: 肌酸酐 (mg/dL) = 1\nnumber age: 年齡 (歲) = 65\nselect female: 性別 | 男=0 | 女=1\n= 175 * cr^-1.154 * age^-0.203 * if(female,0.742,1)\nlabel eGFR (mL/min/1.73m2)\ndec 1\nband 0-29: 重度下降\nband 30-59: 中度下降\nband 60-999: 正常或輕度下降"
+
+產出建議
+------------------------------------------------
+- 區塊順序：keywords → text（要點）→ flow（流程）→ table（藥物／鑑別）→ calc（量表）。
+- 每個詞條都放一個 keywords 區塊，搜尋命中率最高。
+- src 的換行在 JSON 裡寫成 \n，引號寫成 \"。
+- 只輸出 JSON，不要加註解或程式碼圍欄。
+</script>
+
+<script type="application/json" id="sampleSrc">
+{"format":"clinical-kb","version":1,"items":[
+{"title":"低血鈉 Hyponatremia","subtitle":"成人診斷流程與初步處置","tags":["電解質","內科","示範"],
+"blocks":[
+ {"type":"keywords","src":"hyponatremia, 低血鈉, SIADH, 低鈉, 3% saline, tolvaptan, 滲透壓"},
+ {"type":"text","title":"要點","src":"# 定義\n血鈉 < 135 mmol/L。**嚴重**指 < 120 mmol/L 或出現神經學症狀。\n\n# 先排除\n假性低血鈉（高血糖、高血脂、高蛋白），以及抽血技術問題如同側輸液、溶血。\n\n# 矯正速度\n24 小時內上升**不超過 8 mmol/L**，避免 osmotic demyelination。"},
+ {"type":"flow","title":"診斷流程","mode":"step","src":"Q start: 有神經學症狀嗎（意識改變、癲癇、嚴重嘔吐）？\n  有 -> emerg\n  沒有 -> osm\nA emerg: 3% NaCl 100 mL 於 10 分鐘內推注，必要時重複最多 3 次\n  * 目標是症狀改善，前 6 小時上升 4-6 mmol/L 即可\n  -> osm\nQ osm: 血清滲透壓？\n  < 275 -> uosm\n  275-295 -> iso\n  > 295 -> hyper\nR iso: 假性低血鈉 — 查高血脂、高蛋白、抽血技術\nR hyper: 高血糖、mannitol、顯影劑造成的移轉性低血鈉\nQ uosm: 尿液滲透壓？\n  <= 100 -> dilute\n  > 100 -> vol\nR dilute: 原發性多飲、啤酒潛在症、低溶質攝取\nQ vol: 臨床容積狀態？\n  低容積 -> hypo\n  等容積 -> eu\n  高容積 -> hyperv\nQ hypo: 尿鈉？\n  < 30 mmol/L -> extrarenal\n  >= 30 mmol/L -> renal\nR extrarenal: 腸胃道流失、第三腔室滯留 → 等張輸液\nR renal: 利尿劑、腎上腺不足、鹽分流失型腎病\nR eu: SIADH、甲狀腺低下、續發性腎上腺不足 → 限水為主\nR hyperv: 心衰竭、肝硬化、腎病症候群 → 限水限鈉"},
+ {"type":"table","title":"SIADH 常見藥物","desc":"住院病人低血鈉時優先檢視的用藥。","src":"藥物類別,代表藥物,備註\nSSRI,\"Sertraline, Fluoxetine\",老年人風險最高\n抗癲癇,\"Carbamazepine, Oxcarbazepine\",劑量相關\n化療,\"Cyclophosphamide, Vincristine\",高劑量靜脈給藥\n其他,\"Desmopressin, NSAIDs, PPI\",NSAIDs 增強 ADH 作用"},
+ {"type":"calc","title":"矯正鈉需求量","desc":"以體重估算，僅供參考，仍須連續追蹤血鈉。","src":"number wt: 體重 (kg) = 60\nselect sex: 性別 | 男=0.6 | 女=0.5\nnumber target: 目標上升 (mmol/L) = 6\n= wt * sex * target\nlabel 所需鈉量 (mmol)\ndec 0\nband 0-99999: 3% NaCl 每 100 mL 約含 51 mmol 鈉"}
+]}
+]}
+</script>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
