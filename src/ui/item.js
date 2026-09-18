@@ -1,5 +1,6 @@
 import { esc } from "../lib/util.js";
 import { KINDS } from "../lib/kinds.js";
+import { icons } from "../lib/icons.js";
 import { inlineMd, renderText, mdToHtml } from "../lib/markdown.js";
 import { renderTable } from "../lib/csv.js";
 import { parseFlow } from "../lib/flow-parse.js";
@@ -116,11 +117,25 @@ export function renderMain() {
       <button class="ib" data-meta title="說明與標籤">⋯</button>
     </div>
     <div class="meta" ${showMeta ? "" : "hidden"}>
-      <span class="sub" contenteditable="plaintext-only" data-field="subtitle" data-ph="一行說明">${esc(it.subtitle || "")}</span>
-      ${(it.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}
-      <button class="btn bare" data-tags>標籤</button>
-      <button class="btn bare" data-exportitem>匯出</button>
-      <button class="btn bare danger" data-delitem>刪除詞條</button>
+      <div class="row" style="width:100%">
+        <span class="sub" contenteditable="plaintext-only" data-field="subtitle" data-ph="一行說明">${esc(it.subtitle || "")}</span>
+        ${(it.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}
+        <button class="btn bare" data-tags>標籤</button>
+        <button class="btn bare" data-exportitem>匯出</button>
+        <button class="btn bare danger" data-delitem>刪除詞條</button>
+      </div>
+      <div class="sources" style="width:100%">
+        ${(it.sources || [])
+          .map(
+            (s, j) => `<div class="outrow" data-si="${j}">
+          <input class="citeinput" data-sourceurl value="${esc(s.url)}" placeholder="來源網址" style="flex:2">
+          <input class="citeinput" data-sourcelabel value="${esc(s.label || "")}" placeholder="說明（選填）" style="flex:1">
+          <button class="x" data-sourcedel title="移除這筆來源">✕</button>
+        </div>`,
+          )
+          .join("")}
+        <button class="btn bare" data-sourceadd>＋ 參考資料</button>
+      </div>
     </div>
     <div class="tabbar">${tabs}
       <button class="tabadd" data-addblock title="新增分頁">＋</button>
@@ -202,11 +217,22 @@ function blockEl(b, idx, label, layout) {
     (b.type === "table" || b.type === "image" || b.type === "calc") && (editing || (b.desc || "").trim())
       ? `<div class="bdesc" contenteditable="plaintext-only" data-field="desc" data-ph="說明（選填）">${esc(b.desc || "")}</div>`
       : "";
+  const citeEditor = editing
+    ? `<div class="row" style="margin:-4px 0 8px">
+        <input class="citeinput" data-citeurl value="${esc((b.cite && b.cite.url) || "")}" placeholder="來源網址（選填）" style="flex:2">
+        <input class="citeinput" data-citelabel value="${esc((b.cite && b.cite.label) || "")}" placeholder="說明（選填）" style="flex:1">
+      </div>`
+    : "";
+  const citeLink =
+    !editing && b.cite && b.cite.url
+      ? `<a class="ib" href="${esc(b.cite.url)}" target="_blank" rel="noopener noreferrer" title="來源：${esc(b.cite.label || b.cite.url)}">${icons.link}</a>`
+      : "";
   const showTitle = layout === "one" || editing || (b.title || "").trim();
   d.innerHTML = `<div class="bhead">
       <span class="bmark"><i>${KINDS[b.type].icon}</i>${idx + 1}</span>
       ${showTitle ? `<span class="btitle" contenteditable="plaintext-only" data-field="title" data-ph="${esc(label)}">${esc(b.title || "")}</span>` : '<span style="flex:1"></span>'}
       <span class="bacts">
+        ${citeLink}
         <button class="btn ${editing ? "on" : "bare"}" data-edit>${editing ? "完成" : "編輯"}</button>
         <button class="btn bare" data-more title="更多">⋯</button>
       </span></div>
@@ -218,7 +244,7 @@ function blockEl(b, idx, label, layout) {
       <button class="btn bare danger" data-del>刪除分頁</button></div>`
         : ""
     }
-    <div class="bbody">${dsc}${body}</div>`;
+    <div class="bbody">${dsc}${citeEditor}${body}</div>`;
   return d;
 }
 function imageView(b, idx) {

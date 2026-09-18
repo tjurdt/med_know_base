@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { merge, normBlock, strip } from "../src/lib/data-io.js";
+import { merge, normBlock, normCite, normSources, strip } from "../src/lib/data-io.js";
 
 describe("strip", () => {
   it("keeps only non-empty optional fields", () => {
@@ -13,6 +13,49 @@ describe("strip", () => {
   it("keeps strokes only when non-empty", () => {
     const stripped = strip({ title: "t", blocks: [{ type: "image", strokes: [{ c: "#000", w: 1, p: [[0, 0]] }] }] });
     expect(stripped.blocks[0].strokes).toHaveLength(1);
+  });
+  it("keeps a block's cite only when it has a url, and the item's sources only when non-empty", () => {
+    const stripped = strip({
+      title: "t",
+      sources: [{ url: "https://example.com", label: "來源" }],
+      blocks: [
+        { type: "text", src: "x", cite: { url: "https://a.com", label: "A" } },
+        { type: "text", src: "y", cite: { url: "" } },
+      ],
+    });
+    expect(stripped.sources).toEqual([{ url: "https://example.com", label: "來源" }]);
+    expect(stripped.blocks[0].cite).toEqual({ url: "https://a.com", label: "A" });
+    expect(stripped.blocks[1].cite).toBeUndefined();
+  });
+  it("omits sources entirely when the item has none", () => {
+    expect(strip({ title: "t", blocks: [] }).sources).toBeUndefined();
+  });
+});
+
+describe("normCite", () => {
+  it("accepts a bare url string", () => {
+    expect(normCite("https://example.com")).toEqual({ url: "https://example.com", label: "" });
+  });
+  it("accepts {url,label}", () => {
+    expect(normCite({ url: "https://example.com", label: "來源" })).toEqual({ url: "https://example.com", label: "來源" });
+  });
+  it("rejects empty/missing url instead of throwing", () => {
+    expect(normCite("")).toBeUndefined();
+    expect(normCite({ label: "沒有網址" })).toBeUndefined();
+    expect(normCite(null)).toBeUndefined();
+  });
+});
+
+describe("normSources", () => {
+  it("filters out invalid entries and normalizes the rest", () => {
+    expect(normSources(["https://a.com", { url: "" }, { url: "https://b.com", label: "B" }])).toEqual([
+      { url: "https://a.com", label: "" },
+      { url: "https://b.com", label: "B" },
+    ]);
+  });
+  it("returns an empty array for non-array input instead of throwing", () => {
+    expect(normSources(undefined)).toEqual([]);
+    expect(normSources("not an array")).toEqual([]);
   });
 });
 
@@ -33,6 +76,10 @@ describe("normBlock", () => {
     // .map calls the callback with (item, index, array) - normBlock must ignore index/array.
     const blocks = [{ type: "text", src: "a" }, { type: "text", src: "b" }].map(normBlock);
     expect(blocks.map((b) => b.src)).toEqual(["a", "b"]);
+  });
+  it("carries a valid cite through, and drops an invalid one", () => {
+    expect(normBlock({ type: "text", cite: { url: "https://a.com" } }).cite).toEqual({ url: "https://a.com", label: "" });
+    expect(normBlock({ type: "text", cite: { label: "沒有網址" } }).cite).toBeUndefined();
   });
 });
 
@@ -81,5 +128,19 @@ describe("merge", () => {
     expect(db.items).toHaveLength(2);
     expect(db.items.map((i) => i.blocks[0].src)).toEqual(["舊內容", "新內容"]);
     expect(db.items[0].id).not.toBe(db.items[1].id);
+  });
+  it("normalizes sources on a newly-added item", () => {
+    const { db, save, renderList } = setup();
+    merge({ items: [{ title: "t", blocks: [], sources: ["https://a.com", { url: "" }] }] }, db, save, renderList);
+    expect(db.items[0].sources).toEqual([{ url: "https://a.com", label: "" }]);
+  });
+  it("replaces sources on an update only when the imported entry provides them", () => {
+    const { db, save, renderList } = setup();
+    merge({ items: [{ title: "t", blocks: [], sources: ["https://a.com"] }] }, db, save, renderList);
+    const id = db.items[0].id;
+    merge({ items: [{ id, title: "t", blocks: [] }] }, db, save, renderList); // 沒帶 sources
+    expect(db.items[0].sources).toEqual([{ url: "https://a.com", label: "" }]); // 維持原本的
+    merge({ items: [{ id, title: "t", blocks: [], sources: [] }] }, db, save, renderList); // 明確清空
+    expect(db.items[0].sources).toEqual([]);
   });
 });

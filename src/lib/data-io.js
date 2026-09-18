@@ -1,6 +1,20 @@
 import { uid } from "./util.js";
 import { KINDS } from "./kinds.js";
 
+// 來源連結可能以字串、{url}、{url,label} 等形式出現（尤其是 AI 匯入的 JSON 不一定
+// 照規格寫），一律正規化成 {url,label}（label 選填）或直接丟棄無效值——比照
+// playbook 的「驗證寧可寬鬆」原則，一個來源連結格式不對不該讓整筆匯入失敗。
+export function normCite(c) {
+  if (!c) return undefined;
+  if (typeof c === "string") return c.trim() ? { url: c.trim(), label: "" } : undefined;
+  if (typeof c === "object" && c.url) return { url: String(c.url).trim(), label: c.label ? String(c.label).trim() : "" };
+  return undefined;
+}
+export function normSources(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(normCite).filter(Boolean);
+}
+
 export function strip(it) {
   const o = {
     title: it.title,
@@ -14,9 +28,12 @@ export function strip(it) {
       if (b.mode) x.mode = b.mode;
       if (b.header === false) x.header = false;
       if ((b.strokes || []).length) x.strokes = b.strokes;
+      if (b.cite && b.cite.url) x.cite = b.cite;
       return x;
     }),
   };
+  const sources = normSources(it.sources);
+  if (sources.length) o.sources = sources;
   return o;
 }
 
@@ -29,6 +46,8 @@ export function normBlock(b) {
   if (o.type === "image") {
     o.strokes = Array.isArray(b.strokes) ? b.strokes : [];
   }
+  const cite = normCite(b.cite);
+  if (cite) o.cite = cite;
   return o;
 }
 
@@ -57,11 +76,19 @@ export function merge(data, db, save, renderList) {
       existById.subtitle = raw.subtitle || existById.subtitle;
       existById.tags = raw.tags || existById.tags;
       existById.blocks = blocks;
+      if (raw.sources) existById.sources = normSources(raw.sources);
       updated++;
       return;
     }
     const titleTaken = db.items.some((x) => x.title === raw.title);
-    db.items.push({ id: raw.id || uid(), title: raw.title, subtitle: raw.subtitle || "", tags: raw.tags || [], blocks });
+    db.items.push({
+      id: raw.id || uid(),
+      title: raw.title,
+      subtitle: raw.subtitle || "",
+      tags: raw.tags || [],
+      blocks,
+      sources: normSources(raw.sources),
+    });
     if (titleTaken) keptAsNew++;
     else added++;
   });

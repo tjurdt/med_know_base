@@ -92,6 +92,8 @@ h1,h2,h3{font-weight:650;letter-spacing:-.005em;margin:0}
 .bacts{display:flex;gap:2px;flex:0 0 auto;align-items:center}
 .bdesc{font-size:13px;color:var(--ink-3);margin:-4px 0 11px}
 .bdesc:empty:before{content:attr(data-ph)}
+input.citeinput{padding:7px 9px;border:1px solid var(--line);border-radius:5px;
+  background:var(--paper);font-size:13.5px;min-width:0}
 .block.one>.bhead{border-top:1px solid var(--line);padding-top:10px}
 textarea.src{width:100%;min-height:190px;border:1px solid var(--line);border-radius:5px;padding:9px 11px;
   background:var(--surf);font-family:var(--mono);font-size:13px;line-height:1.7;resize:vertical}
@@ -332,8 +334,10 @@ item
   "title":    "低血鈉 Hyponatremia",     // 必填
   "subtitle": "成人診斷與處置",           // 選填
   "tags":     ["電解質","內科"],          // 選填
+  "sources":  [ {"url":"https://...", "label":"UpToDate"} ], // 選填，整個詞條的參考資料清單
   "blocks":   [ block, ... ]             // 順序即分頁順序
 }
+"sources" 每一筆也可以直接寫一個網址字串（沒有 label 時用這個簡寫）。
 
 block 共通欄位
 ------------------------------------------------
@@ -341,6 +345,8 @@ block 共通欄位
   "title" : 分頁標題（選填；留空顯示編號）
   "desc"  : 一行說明（table / image / calc 可用）
   "src"   : 內容，格式依 type 而定
+  "cite"  : 這個分頁單獨的來源連結（選填），格式同 "sources" 的單筆項目：
+            {"url":"https://...", "label":"..."} 或直接一個網址字串
 
 1) type:"text" — 文字
 ------------------------------------------------

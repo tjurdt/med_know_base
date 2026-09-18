@@ -112,6 +112,20 @@ export function initEvents() {
       }
       return;
     }
+    if (hit("[data-sourceadd]")) {
+      it.sources = it.sources || [];
+      it.sources.push({ url: "", label: "" });
+      save();
+      renderMain();
+      return;
+    }
+    const sourcedel = hit("[data-sourcedel]");
+    if (sourcedel) {
+      it.sources.splice(+sourcedel.closest(".outrow").dataset.si, 1);
+      save();
+      renderMain();
+      return;
+    }
     if (hit("[data-exportitem]")) {
       download(it.title + ".json", JSON.stringify({ format: "clinical-kb", version: 1, items: [strip(it)] }, null, 1));
       return;
@@ -462,11 +476,26 @@ export function initEvents() {
     }
     const it = itemById(state.cur);
     if (!it) return;
+    if (t.matches("[data-sourceurl],[data-sourcelabel]")) {
+      const s = it.sources[+t.closest(".outrow").dataset.si];
+      if (!s) return;
+      if (t.matches("[data-sourceurl]")) s.url = t.value;
+      else s.label = t.value;
+      save();
+      return;
+    }
     const sec = t.closest(".block");
     if (!sec) return;
     const blk = it.blocks[+sec.dataset.bi];
     if (!blk) return;
 
+    if (t.matches("[data-citeurl],[data-citelabel]")) {
+      blk.cite = blk.cite || { url: "", label: "" };
+      if (t.matches("[data-citeurl]")) blk.cite.url = t.value;
+      else blk.cite.label = t.value;
+      save();
+      return;
+    }
     if (t.matches("[data-wysbody]")) {
       blk.src = htmlToMd(t);
       save();
