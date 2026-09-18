@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcValues, evalExpr, parseCalc } from "../src/lib/calc.js";
+import { calcValues, evalExpr, parseCalc, serializeCalc } from "../src/lib/calc.js";
 
 describe("parseCalc", () => {
   it("parses number/check/select fields plus expr/label/dec/band", () => {
@@ -84,5 +84,27 @@ describe("calcValues", () => {
       state: {},
     };
     expect(calcValues(blk).raw).toBe(216);
+  });
+});
+
+describe("serializeCalc round-trip (using the app's own built-in examples as fixtures)", () => {
+  it("round-trips the 矯正鈉需求量 sample (from sampleSrc)", () => {
+    const src =
+      "number wt: 體重 (kg) = 60\nselect sex: 性別 | 男=0.6 | 女=0.5\nnumber target: 目標上升 (mmol/L) = 6\n= wt * sex * target\nlabel 所需鈉量 (mmol)\ndec 0\nband 0-99999: 3% NaCl 每 100 mL 約含 51 mmol 鈉";
+    expect(parseCalc(serializeCalc(parseCalc(src)))).toEqual(parseCalc(src));
+  });
+  it("round-trips the CHA2DS2-VASc sample (from the AI import spec text)", () => {
+    const src =
+      "check chf: 心衰竭 = 1\ncheck htn: 高血壓 = 1\nselect age: 年齡 | <65=0 | 65-74=1 | >=75=2\ncheck dm: 糖尿病 = 1\ncheck stroke: 中風／TIA = 2\ncheck vasc: 血管疾病 = 1\ncheck sex: 女性 = 1\n= SUM\nlabel 分數\nband 0-0: 低風險\nband 1-1: 中風險\nband 2-9: 高風險";
+    expect(parseCalc(serializeCalc(parseCalc(src)))).toEqual(parseCalc(src));
+  });
+  it("round-trips a number field whose label contains '(' (the Stage 3 edge case)", () => {
+    const src = "number ratio: A(mg)/B(mg) 比值 = 1.5\n= ratio";
+    expect(parseCalc(serializeCalc(parseCalc(src)))).toEqual(parseCalc(src));
+  });
+  it("omits dec/unit/default when they're at their parsed defaults", () => {
+    expect(serializeCalc({ fields: [{ kind: "number", id: "x", label: "X", unit: "", def: "" }], expr: "SUM", label: "結果", dec: 0, bands: [] })).toBe(
+      "number x: X\n= SUM\nlabel 結果",
+    );
   });
 });

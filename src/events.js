@@ -9,6 +9,7 @@ import { renderList } from "./ui/list.js";
 import { renderMain } from "./ui/item.js";
 import { fnodes, commitFlow, nextFid, flowPreviewHtml } from "./ui/flow-editor.js";
 import { tableRows, commitTable } from "./ui/table-editor.js";
+import { calcFields, commitCalcFields, nextFieldId } from "./ui/calc-editor.js";
 import { rerender, openItem, newItem, addBlock, copySpec, exportAll, doImport, download, loadSample } from "./actions.js";
 
 export function initEvents() {
@@ -302,6 +303,77 @@ export function initEvents() {
       commitTable(blk, true);
       return;
     }
+    /* --- 計算機：卡片編輯 --- */
+    const craw = hit("[data-craw]");
+    if (craw) {
+      state.calcRaw[blk.id] = craw.dataset.craw === "1";
+      delete state.calcCache[blk.id];
+      renderMain();
+      return;
+    }
+    const cfadd = hit("[data-cfadd]");
+    if (cfadd) {
+      const c = calcFields(blk);
+      const kind = cfadd.dataset.cfadd;
+      const f = { kind, id: nextFieldId(c.fields), label: "" };
+      if (kind === "number") {
+        f.unit = "";
+        f.def = "";
+      } else if (kind === "check") f.w = 1;
+      else f.opts = [{ label: "", value: 0 }];
+      c.fields.push(f);
+      commitCalcFields(blk, true);
+      return;
+    }
+    const cftype = hit("[data-cftype]");
+    if (cftype) {
+      const card = t.closest(".fnodecard[data-fi]");
+      const f = calcFields(blk).fields[+card.dataset.fi];
+      const kind = cftype.dataset.cftype;
+      if (f && f.kind !== kind) {
+        f.kind = kind;
+        if (kind === "number") {
+          f.unit = f.unit || "";
+          f.def = f.def ?? "";
+        } else if (kind === "check") f.w = f.w ?? 1;
+        else f.opts = f.opts && f.opts.length ? f.opts : [{ label: "", value: 0 }];
+        commitCalcFields(blk, true);
+      }
+      return;
+    }
+    const cfdel = hit("[data-cfdel]");
+    if (cfdel) {
+      const card = t.closest(".fnodecard[data-fi]");
+      calcFields(blk).fields.splice(+card.dataset.fi, 1);
+      commitCalcFields(blk, true);
+      return;
+    }
+    if (hit("[data-cfoptadd]")) {
+      const card = t.closest(".fnodecard[data-fi]");
+      calcFields(blk).fields[+card.dataset.fi].opts.push({ label: "", value: 0 });
+      commitCalcFields(blk, true);
+      return;
+    }
+    const cfoptdel = hit("[data-cfoptdel]");
+    if (cfoptdel) {
+      const card = t.closest(".fnodecard[data-fi]");
+      const f = calcFields(blk).fields[+card.dataset.fi];
+      f.opts.splice(+cfoptdel.closest(".outrow").dataset.oi, 1);
+      commitCalcFields(blk, true);
+      return;
+    }
+    if (hit("[data-cbandadd]")) {
+      calcFields(blk).bands.push({ min: 0, max: 0, text: "" });
+      commitCalcFields(blk, true);
+      return;
+    }
+    const cbanddel = hit("[data-cbanddel]");
+    if (cbanddel) {
+      calcFields(blk).bands.splice(+cbanddel.closest(".outrow").dataset.bi, 1);
+      commitCalcFields(blk, true);
+      return;
+    }
+
     if (hit("[data-loadcsv]")) {
       state.pendingCsv = blk;
       $("#fileCsv").click();
@@ -417,6 +489,37 @@ export function initEvents() {
     if (t.matches("[data-cell]")) {
       tableRows(blk)[+t.dataset.row][+t.dataset.col] = t.value;
       commitTable(blk, false);
+      return;
+    }
+    if (t.matches("[data-cfid],[data-cflabel],[data-cfunit],[data-cfdef],[data-cfweight],[data-cfoptlabel],[data-cfoptvalue]")) {
+      const card = t.closest(".fnodecard[data-fi]");
+      const f = calcFields(blk).fields[+card.dataset.fi];
+      if (!f) return;
+      if (t.matches("[data-cfid]")) f.id = t.value.trim();
+      else if (t.matches("[data-cflabel]")) f.label = t.value;
+      else if (t.matches("[data-cfunit]")) f.unit = t.value;
+      else if (t.matches("[data-cfdef]")) f.def = t.value === "" ? "" : +t.value;
+      else if (t.matches("[data-cfweight]")) f.w = +t.value;
+      else {
+        const o = f.opts[+t.closest(".outrow").dataset.oi];
+        if (t.matches("[data-cfoptlabel]")) o.label = t.value;
+        else o.value = +t.value;
+      }
+      commitCalcFields(blk, false);
+      return;
+    }
+    if (t.matches("[data-cexpr],[data-clabel],[data-cdec],[data-cbandmin],[data-cbandmax],[data-cbandtext]")) {
+      const c = calcFields(blk);
+      if (t.matches("[data-cexpr]")) c.expr = t.value;
+      else if (t.matches("[data-clabel]")) c.label = t.value;
+      else if (t.matches("[data-cdec]")) c.dec = +t.value || 0;
+      else {
+        const b = c.bands[+t.closest(".outrow").dataset.bi];
+        if (t.matches("[data-cbandmin]")) b.min = +t.value;
+        else if (t.matches("[data-cbandmax]")) b.max = +t.value;
+        else b.text = t.value;
+      }
+      commitCalcFields(blk, false);
       return;
     }
     if (t.matches("[data-ftext],[data-fnote],[data-flabel],[data-fto]")) {

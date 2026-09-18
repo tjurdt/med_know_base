@@ -64,6 +64,31 @@ export function parseCalc(src) {
   return c;
 }
 
+// parseCalc 的反函式，供計算機的卡片編輯器在每次互動後把結構重新寫回 blk.src。
+export function serializeCalc(c) {
+  const lines = [];
+  (c.fields || []).forEach((f) => {
+    if (f.kind === "number") {
+      let line = `number ${f.id}: ${f.label}`;
+      if (f.unit) line += ` (${f.unit})`;
+      if (f.def !== "" && f.def !== undefined) line += ` = ${f.def}`;
+      lines.push(line);
+    } else if (f.kind === "check") {
+      lines.push(`check ${f.id}: ${f.label} = ${f.w !== undefined ? f.w : 1}`);
+    } else if (f.kind === "select") {
+      const opts = (f.opts || []).map((o) => `${o.label}=${o.value}`).join(" | ");
+      lines.push(`select ${f.id}: ${f.label} | ${opts}`);
+    }
+  });
+  lines.push(`= ${c.expr || "SUM"}`);
+  lines.push(`label ${c.label || "結果"}`);
+  if (c.dec) lines.push(`dec ${c.dec}`);
+  (c.bands || []).forEach((b) => {
+    lines.push(`band ${b.min}-${b.max}: ${b.text}`);
+  });
+  return lines.join("\n");
+}
+
 /* 安全運算式：遞迴下降，不用 eval */
 export function evalExpr(src, vars) {
   let i = 0;

@@ -8,6 +8,7 @@ import { calcValues } from "../lib/calc.js";
 import { itemById, state } from "../store.js";
 import { renderFlowEditor } from "./flow-editor.js";
 import { renderTableEditor } from "./table-editor.js";
+import { renderCalcEditor } from "./calc-editor.js";
 import { mountCanvas } from "./canvas.js";
 
 /* 逐步模式 */
@@ -166,14 +167,8 @@ function blockEl(b, idx, label, layout) {
         <div class="syntax">只影響搜尋。中英文、縮寫、口語說法都放進來。</div>`;
     } else if (b.type === "table") {
       body = renderTableEditor(b) + '<div class="row" style="margin-top:8px"><button class="btn" data-loadcsv>讀入 CSV 檔</button></div>';
-    } else {
-      const ph = { calc: "check x: 項目 = 1\n= SUM\nlabel 分數\nband 0-1: 低風險" }[b.type] || "";
-      const help =
-        {
-          calc: "number／check／select 定義欄位；= 公式（SUM 為總分）；label 結果名；dec 小數位；band 下限-上限: 判讀",
-        }[b.type] || "";
-      body = `<textarea class="src" data-src placeholder="${esc(ph)}">${esc(b.src || "")}</textarea>
-        <div class="syntax">${esc(help)}</div>`;
+    } else if (b.type === "calc") {
+      body = renderCalcEditor(b);
     }
   } else {
     if (b.type === "text") body = '<div class="rt">' + renderText(b.src) + "</div>";
