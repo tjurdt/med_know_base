@@ -55,14 +55,17 @@ describe("renderFlowSvg", () => {
     expect((svg.match(/<path class="fedge"/g) || []).length).toBe(2);
   });
   it(
-    "degrades to a text listing instead of hanging on a true feedback cycle " +
-      "(Stage 3 fix - see git history for how this used to hang the whole worker)",
+    "renders a true feedback cycle as an actual diagram instead of degrading to text " +
+      "(Stage 6c: a genuine cycle used to make this hang - Stage 3 capped that with a " +
+      "MAX_STEPS abort that degraded to a <pre> listing; Stage 6c properly breaks the " +
+      "cycle before layout instead, so it draws normally, no MAX_STEPS trip, no <pre>)",
     () => {
       const svg = renderFlowSvg("A start: 開始\n  -> a\nA a: 下一步\n  -> start");
-      expect(svg).toContain("回饋迴路");
-      expect(svg).toContain("<pre");
-      expect(svg).toContain("A start: 開始");
-      expect(svg).not.toContain("<svg");
+      expect(svg).toContain("<svg");
+      expect(svg).not.toContain("<pre");
+      expect(svg).not.toContain("回饋迴路");
+      expect((svg.match(/<g class="fnode">/g) || []).length).toBe(2);
+      expect((svg.match(/<path class="fedge"/g) || []).length).toBe(2);
     },
   );
 
@@ -104,6 +107,76 @@ describe("renderFlowSvg", () => {
           expect(segmentEntersBox(p1, p2, box)).toBe(false);
         }
       }
+    });
+  });
+
+  describe("真正的回饋迴路畫成圖形，不再降級成文字（Stage 6c）", () => {
+    function edgeSegmentsAvoidOtherBoxes(edgeSegments, boxes, sourceBox, targetBox) {
+      for (const [p1, p2] of edgeSegments) {
+        for (const box of boxes) {
+          if (box === sourceBox || box === targetBox) continue;
+          expect(segmentEntersBox(p1, p2, box)).toBe(false);
+        }
+      }
+    }
+
+    it("simple two-node cycle (A -> B -> A): both edges drawn, feedback edge avoids the boxes", () => {
+      const svg = renderFlowSvg("A start: 開始\n  -> a\nA a: 下一步\n  -> start");
+      expect(svg).toContain("<svg");
+      expect(svg).not.toContain("<pre");
+      const boxes = parseNodeBoxes(svg);
+      const edges = parseEdgeSegments(svg);
+      expect(boxes).toHaveLength(2);
+      expect(edges).toHaveLength(2);
+      const [start, a] = boxes;
+      // 第二條邊（a -> start）是回饋邊，不該穿過任何一個方塊的內部。
+      edgeSegmentsAvoidOtherBoxes(edges[1], boxes, a, start);
+    });
+
+    it("self-loop (A -> A) draws without hanging, using the same-rank side-entry path (the only case where target rank can equal source rank)", () => {
+      // 一般的回饋邊指向 DFS 路徑上的「真祖先」，而最長路徑排版保證任何祖先的 rank
+      // 都嚴格小於子孫（子孫至少要多繞一條邊才到得了）——所以「target rank == source
+      // rank」這個分支實際上只有自我循環（source 和 target 是同一個節點）會觸發，
+      // 不存在「兩個不同節點同層互指」的情況。這裡直接驗證自環案例，順便做幾何檢查。
+      const svg = renderFlowSvg("A start: 開始\n  -> a\nA a: 下一步\n  -> a");
+      expect(svg).toContain("<svg");
+      expect(svg).not.toContain("<pre");
+      const boxes = parseNodeBoxes(svg);
+      const edges = parseEdgeSegments(svg);
+      expect(boxes).toHaveLength(2);
+      const [start, a] = boxes;
+      edgeSegmentsAvoidOtherBoxes(edges[0], boxes, start, a); // start -> a
+      edgeSegmentsAvoidOtherBoxes(edges[1], boxes, a, a); // a -> a（自環）
+    });
+
+    it("a cycle with a branch off the main line still lays out correctly (no box overlaps anywhere)", () => {
+      const svg = renderFlowSvg("Q n1: 起點\n  -> n2\nQ n2: 檢查\n  cond1 -> n3\n  cond2 -> n4\nQ n3: 迴圈內\n  back -> n2\nR n4: 主線繼續");
+      expect(svg).toContain("<svg");
+      expect(svg).not.toContain("<pre");
+      const boxes = parseNodeBoxes(svg);
+      const edges = parseEdgeSegments(svg);
+      expect(boxes).toHaveLength(4);
+      expect(edges).toHaveLength(4); // n1->n2, n2->n3, n2->n4, n3->n2(回饋邊)
+      const [n1, n2, n3, n4] = boxes;
+      edgeSegmentsAvoidOtherBoxes(edges[0], boxes, n1, n2);
+      edgeSegmentsAvoidOtherBoxes(edges[1], boxes, n2, n3);
+      edgeSegmentsAvoidOtherBoxes(edges[2], boxes, n2, n4);
+      edgeSegmentsAvoidOtherBoxes(edges[3], boxes, n3, n2); // 回饋邊
+    });
+
+    it("terminates quickly even for a larger cyclic graph (guards against reintroducing Stage 3's hang)", () => {
+      // 20 個節點串成一個大迴圈，確認新的 DFS+排版邏輯不會意外變慢或卡住。
+      const lines = [];
+      for (let i = 1; i <= 20; i++) {
+        const next = i === 20 ? 1 : i + 1;
+        lines.push(`A n${i}: 節點${i}\n  -> n${next}`);
+      }
+      const start = Date.now();
+      const svg = renderFlowSvg(lines.join("\n"));
+      expect(Date.now() - start).toBeLessThan(2000);
+      expect(svg).toContain("<svg");
+      expect(svg).not.toContain("<pre");
+      expect((svg.match(/<g class="fnode">/g) || []).length).toBe(20);
     });
   });
 });
