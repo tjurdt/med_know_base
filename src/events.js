@@ -8,6 +8,7 @@ import { $ } from "./ui/toast.js";
 import { renderList } from "./ui/list.js";
 import { renderMain } from "./ui/item.js";
 import { fnodes, commitFlow, nextFid, flowPreviewHtml } from "./ui/flow-editor.js";
+import { tableRows, commitTable } from "./ui/table-editor.js";
 import { rerender, openItem, newItem, addBlock, copySpec, exportAll, doImport, download, loadSample } from "./actions.js";
 
 export function initEvents() {
@@ -267,6 +268,40 @@ export function initEvents() {
       renderMain();
       return;
     }
+
+    /* --- 表格：格子編輯 --- */
+    const traw = hit("[data-traw]");
+    if (traw) {
+      state.tableRaw[blk.id] = traw.dataset.traw === "1";
+      delete state.tableCache[blk.id];
+      renderMain();
+      return;
+    }
+    if (hit("[data-addrow]")) {
+      const rows = tableRows(blk);
+      rows.push(new Array(rows[0].length).fill(""));
+      commitTable(blk, true);
+      return;
+    }
+    const delrow = hit("[data-delrow]");
+    if (delrow) {
+      const rows = tableRows(blk);
+      if (rows.length > 1) rows.splice(+delrow.dataset.delrow, 1);
+      commitTable(blk, true);
+      return;
+    }
+    if (hit("[data-addcol]")) {
+      tableRows(blk).forEach((r) => r.push(""));
+      commitTable(blk, true);
+      return;
+    }
+    const delcol = hit("[data-delcol]");
+    if (delcol) {
+      const rows = tableRows(blk);
+      if (rows[0].length > 1) rows.forEach((r) => r.splice(+delcol.dataset.delcol, 1));
+      commitTable(blk, true);
+      return;
+    }
     if (hit("[data-loadcsv]")) {
       state.pendingCsv = blk;
       $("#fileCsv").click();
@@ -377,6 +412,11 @@ export function initEvents() {
       }
       save();
       renderList();
+      return;
+    }
+    if (t.matches("[data-cell]")) {
+      tableRows(blk)[+t.dataset.row][+t.dataset.col] = t.value;
+      commitTable(blk, false);
       return;
     }
     if (t.matches("[data-ftext],[data-fnote],[data-flabel],[data-fto]")) {
@@ -496,6 +536,7 @@ export function initEvents() {
     const r = new FileReader();
     r.onload = () => {
       state.pendingCsv.src = r.result;
+      delete state.tableCache[state.pendingCsv.id]; // 換掉整份 src，快取要失效重新解析
       state.pendingCsv = null;
       save();
       rerender();

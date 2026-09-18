@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCsv, renderTable } from "../src/lib/csv.js";
+import { parseCsv, renderTable, serializeCsv } from "../src/lib/csv.js";
 
 describe("parseCsv", () => {
   it("splits rows/columns and drops blank rows", () => {
@@ -35,5 +35,24 @@ describe("renderTable", () => {
   });
   it("shows a placeholder when there is no data", () => {
     expect(renderTable("")).toContain("尚無資料");
+  });
+});
+
+describe("serializeCsv", () => {
+  it("round-trips plain fields", () => {
+    const rows = [
+      ["藥物", "劑量"],
+      ["A", "10mg"],
+    ];
+    expect(parseCsv(serializeCsv(rows))).toEqual(rows);
+  });
+  it("quotes fields containing a comma, a quote, or a newline, and doubles internal quotes", () => {
+    const rows = [["x", "a, b", 'say "hi"', "line1\nline2"]];
+    const csv = serializeCsv(rows);
+    expect(csv).toBe('x,"a, b","say ""hi""","line1\nline2"');
+    expect(parseCsv(csv)).toEqual(rows);
+  });
+  it("leaves plain fields unquoted", () => {
+    expect(serializeCsv([["a", "b"]])).toBe("a,b");
   });
 });

@@ -33,6 +33,19 @@ export function parseCsv(txt) {
   }
   return rows.filter((r) => r.some((x) => x.trim() !== ""));
 }
+// parseCsv 的反函式：欄位含逗號、雙引號或換行才加雙引號包住，內部雙引號雙寫。
+export function serializeCsv(rows) {
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const s = String(cell ?? "");
+          return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        })
+        .join(","),
+    )
+    .join("\n");
+}
 export function renderTable(src, header) {
   const rows = parseCsv(src);
   if (!rows.length) return '<p style="color:var(--ink-3)">（尚無資料，貼上 CSV 或讀入檔案）</p>';
