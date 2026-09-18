@@ -42,17 +42,25 @@ function fieldCard(f, i) {
             )
             .join("")}
         <div class="foot"><button class="btn bare" data-cfoptadd>＋ 選項</button></div>`;
+  // 標籤是使用者最在意的東西，放最前面、用一般大小的輸入；代號/型別/單位這些多數人
+  // 不用管的設定細節（只有要自己寫公式時才需要對照代號）收進一個字級較小、顏色較淡
+  // 的次要區塊，避免每個欄位卡片一次塞十個同樣顯眼的輸入框。見 plan Stage 6d。
   return `<div class="fnodecard ${f.kind === "select" ? "q" : f.kind === "check" ? "a" : "r"}" data-fid="${esc(f.id)}" data-fi="${i}">
     <div class="top">
-      <input class="tx" data-cfid value="${esc(f.id)}" placeholder="代號" style="max-width:96px">
-      <div class="seg">${["number", "check", "select"]
-        .map((k) => `<button data-cftype="${k}" class="${f.kind === k ? "on" : ""}">${KIND_LABEL[k]}</button>`)
-        .join("")}</div>
-      <span style="flex:1"></span>
+      <input class="tx" data-cflabel value="${esc(f.label || "")}" placeholder="標籤，例如：體重">
       <button class="ib" data-cfdel title="刪除欄位">✕</button>
     </div>
-    <input class="tx" data-cflabel value="${esc(f.label || "")}" placeholder="標籤">
-    ${extra}
+    <div class="cfdetail">
+      <div class="row">
+        <div class="seg">${["number", "check", "select"]
+          .map((k) => `<button data-cftype="${k}" class="${f.kind === k ? "on" : ""}">${KIND_LABEL[k]}</button>`)
+          .join("")}</div>
+        <span style="flex:1"></span>
+        <span>代號</span>
+        <input class="cfid" data-cfid value="${esc(f.id)}" placeholder="id">
+      </div>
+      ${extra}
+    </div>
   </div>`;
 }
 
