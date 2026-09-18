@@ -1,14 +1,14 @@
 name: Deploy to GitHub Pages
 
-# Manual dispatch only for now. GitHub Pages source is still "legacy" (deploy from the
-# main branch's raw files), which has its own auto-triggered "pages build and
-# deployment" workflow on every push. Running this workflow's deploy step on push too
-# raced that legacy deploy and won once, replacing the full-repo legacy site with just
-# this workflow's dist/-only build - which doesn't include clinical-kb-4.html - breaking
-# that public URL. Do not add a push trigger back until the Pages source is deliberately
-# switched to "GitHub Actions" (see the plan's 部署銜接 section) - that switch needs the
-# user's go-ahead first.
+# Pages source was switched from "legacy" (branch-serving) to "GitHub Actions" with the
+# user's explicit go-ahead (see the plan's 部署銜接 section) - this workflow is now the
+# only thing that deploys the site, so it needs the push trigger. Before this switch, a
+# push trigger here raced the legacy auto-deploy and once won, breaking
+# clinical-kb-4.html's public URL - that risk no longer applies once legacy serving is
+# off, but don't add this trigger back on a repo that's still in legacy mode.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
