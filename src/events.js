@@ -416,20 +416,16 @@ export function initEvents() {
     }
   });
 
-  /* 文字工具列：保住選取範圍 */
-  document.addEventListener("mousedown", (e) => {
-    if (e.target.closest("[data-wys]")) e.preventDefault();
-  });
-  document.addEventListener(
-    "touchstart",
-    (e) => {
-      if (e.target.closest("[data-wys]")) e.preventDefault();
-    },
-    { passive: false },
-  );
-  document.addEventListener("click", (e) => {
+  /* 文字工具列：用 pointerdown（涵蓋滑鼠與觸控）同時保住選取範圍並直接執行格式化，
+     不依賴瀏覽器合成的 click。舊版分成 mousedown/touchstart（只 preventDefault）
+     跟一個獨立的 click（真正執行格式化）——但觸控裝置上 touchstart 呼叫
+     preventDefault 後，瀏覽器規範上不會再合成後續的 click 事件，導致這組按鈕在
+     手機上完全沒反應（用 Playwright 觸控模擬證實過：clicks fired = 0）。見 plan
+     Stage 6a。 */
+  document.addEventListener("pointerdown", (e) => {
     const w = e.target.closest("[data-wys]");
     if (!w) return;
+    e.preventDefault();
     const sec = w.closest(".block");
     const body = sec.querySelector("[data-wysbody]");
     if (!body) return;
