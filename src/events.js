@@ -1,4 +1,4 @@
-import { esc } from "./lib/util.js";
+import { esc, uid } from "./lib/util.js";
 import { strip } from "./lib/data-io.js";
 import { parseFlow } from "./lib/flow-parse.js";
 import { calcValues } from "./lib/calc.js";
@@ -10,6 +10,7 @@ import { renderMain } from "./ui/item.js";
 import { fnodes, commitFlow, nextFid, flowPreviewHtml } from "./ui/flow-editor.js";
 import { tableRows, commitTable } from "./ui/table-editor.js";
 import { calcFields, commitCalcFields, nextFieldId } from "./ui/calc-editor.js";
+import { refsList, commitRefs } from "./ui/refs-editor.js";
 import { rerender, openItem, newItem, addBlock, copySpec, exportAll, doImport, download, loadSample } from "./actions.js";
 
 export function initEvents() {
@@ -123,20 +124,6 @@ export function initEvents() {
       }
       return;
     }
-    if (hit("[data-sourceadd]")) {
-      it.sources = it.sources || [];
-      it.sources.push({ url: "", label: "" });
-      save();
-      renderMain();
-      return;
-    }
-    const sourcedel = hit("[data-sourcedel]");
-    if (sourcedel) {
-      it.sources.splice(+sourcedel.closest(".outrow").dataset.si, 1);
-      save();
-      renderMain();
-      return;
-    }
     if (hit("[data-exportitem]")) {
       download(it.title + ".json", JSON.stringify({ format: "clinical-kb", version: 1, items: [strip(it)] }, null, 1));
       return;
@@ -187,6 +174,48 @@ export function initEvents() {
         save();
         renderMain();
       }
+      return;
+    }
+
+    /* --- 來源連結（cites）：六種原有分頁類型共用 --- */
+    if (hit("[data-citeadd]")) {
+      blk.cites = blk.cites || [];
+      blk.cites.push({ url: "", label: "" });
+      // 任何分頁新增一筆來源連結時，若這個詞條還沒有「參考連結」分頁就自動開一個，
+      // 統合所有分頁的連結——不主動切換過去，使用者留在原本正在編輯的分頁。見 plan
+      // Stage 7c。
+      if (!it.blocks.some((b) => b.type === "refs")) {
+        it.blocks.push({ id: uid(), type: "refs", title: "", src: "" });
+      }
+      save();
+      renderMain();
+      return;
+    }
+    const citedel = hit("[data-citedel]");
+    if (citedel) {
+      blk.cites.splice(+citedel.closest(".outrow").dataset.ci, 1);
+      save();
+      renderMain();
+      return;
+    }
+
+    /* --- 參考連結分頁自己的清單 --- */
+    if (hit("[data-refadd]")) {
+      refsList(blk).push({ url: "", label: "" });
+      commitRefs(blk, true);
+      return;
+    }
+    const refdel = hit("[data-refdel]");
+    if (refdel) {
+      refsList(blk).splice(+refdel.closest(".outrow").dataset.ri, 1);
+      commitRefs(blk, true);
+      return;
+    }
+    const reftab = hit("[data-reftab]");
+    if (reftab) {
+      state.onePage = false;
+      state.curTab = +reftab.dataset.reftab;
+      renderMain();
       return;
     }
 
@@ -487,24 +516,25 @@ export function initEvents() {
     }
     const it = itemById(state.cur);
     if (!it) return;
-    if (t.matches("[data-sourceurl],[data-sourcelabel]")) {
-      const s = it.sources[+t.closest(".outrow").dataset.si];
-      if (!s) return;
-      if (t.matches("[data-sourceurl]")) s.url = t.value;
-      else s.label = t.value;
-      save();
-      return;
-    }
     const sec = t.closest(".block");
     if (!sec) return;
     const blk = it.blocks[+sec.dataset.bi];
     if (!blk) return;
 
     if (t.matches("[data-citeurl],[data-citelabel]")) {
-      blk.cite = blk.cite || { url: "", label: "" };
-      if (t.matches("[data-citeurl]")) blk.cite.url = t.value;
-      else blk.cite.label = t.value;
+      const c = (blk.cites || [])[+t.closest(".outrow").dataset.ci];
+      if (!c) return;
+      if (t.matches("[data-citeurl]")) c.url = t.value;
+      else c.label = t.value;
       save();
+      return;
+    }
+    if (t.matches("[data-refurl],[data-reflabel]")) {
+      const r = refsList(blk)[+t.closest(".outrow").dataset.ri];
+      if (!r) return;
+      if (t.matches("[data-refurl]")) r.url = t.value;
+      else r.label = t.value;
+      commitRefs(blk, false);
       return;
     }
     if (t.matches("[data-wysbody]")) {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { merge, normBlock, normCite, normSources, strip } from "../src/lib/data-io.js";
+import { merge, migrateLegacy, normBlock, normCite, normCites, strip } from "../src/lib/data-io.js";
 
 describe("strip", () => {
   it("keeps only non-empty optional fields", () => {
@@ -14,21 +14,19 @@ describe("strip", () => {
     const stripped = strip({ title: "t", blocks: [{ type: "image", strokes: [{ c: "#000", w: 1, p: [[0, 0]] }] }] });
     expect(stripped.blocks[0].strokes).toHaveLength(1);
   });
-  it("keeps a block's cite only when it has a url, and the item's sources only when non-empty", () => {
+  it("keeps a block's cites only when non-empty (array, not the old singular cite)", () => {
     const stripped = strip({
       title: "t",
-      sources: [{ url: "https://example.com", label: "來源" }],
       blocks: [
-        { type: "text", src: "x", cite: { url: "https://a.com", label: "A" } },
-        { type: "text", src: "y", cite: { url: "" } },
+        { type: "text", src: "x", cites: [{ url: "https://a.com", label: "A" }] },
+        { type: "text", src: "y", cites: [] },
       ],
     });
-    expect(stripped.sources).toEqual([{ url: "https://example.com", label: "來源" }]);
-    expect(stripped.blocks[0].cite).toEqual({ url: "https://a.com", label: "A" });
-    expect(stripped.blocks[1].cite).toBeUndefined();
+    expect(stripped.blocks[0].cites).toEqual([{ url: "https://a.com", label: "A" }]);
+    expect(stripped.blocks[1].cites).toBeUndefined();
   });
-  it("omits sources entirely when the item has none", () => {
-    expect(strip({ title: "t", blocks: [] }).sources).toBeUndefined();
+  it("no longer emits an item-level sources field (replaced by the refs block type)", () => {
+    expect(strip({ title: "t", sources: [{ url: "https://example.com" }], blocks: [] }).sources).toBeUndefined();
   });
 });
 
@@ -46,16 +44,16 @@ describe("normCite", () => {
   });
 });
 
-describe("normSources", () => {
+describe("normCites", () => {
   it("filters out invalid entries and normalizes the rest", () => {
-    expect(normSources(["https://a.com", { url: "" }, { url: "https://b.com", label: "B" }])).toEqual([
+    expect(normCites(["https://a.com", { url: "" }, { url: "https://b.com", label: "B" }])).toEqual([
       { url: "https://a.com", label: "" },
       { url: "https://b.com", label: "B" },
     ]);
   });
   it("returns an empty array for non-array input instead of throwing", () => {
-    expect(normSources(undefined)).toEqual([]);
-    expect(normSources("not an array")).toEqual([]);
+    expect(normCites(undefined)).toEqual([]);
+    expect(normCites("not an array")).toEqual([]);
   });
 });
 
@@ -77,9 +75,17 @@ describe("normBlock", () => {
     const blocks = [{ type: "text", src: "a" }, { type: "text", src: "b" }].map(normBlock);
     expect(blocks.map((b) => b.src)).toEqual(["a", "b"]);
   });
-  it("carries a valid cite through, and drops an invalid one", () => {
-    expect(normBlock({ type: "text", cite: { url: "https://a.com" } }).cite).toEqual({ url: "https://a.com", label: "" });
-    expect(normBlock({ type: "text", cite: { label: "沒有網址" } }).cite).toBeUndefined();
+  it("carries a valid cites array through, and drops invalid entries", () => {
+    expect(normBlock({ type: "text", cites: ["https://a.com", { label: "沒有網址" }] }).cites).toEqual([
+      { url: "https://a.com", label: "" },
+    ]);
+  });
+  it("accepts a refs block's src (plain text) like any other type", () => {
+    expect(normBlock({ type: "refs", src: "https://a.com | A" }).type).toBe("refs");
+  });
+  it("ignores the old Stage 6e singular cite field instead of crashing (importing an old-format file)", () => {
+    const b = normBlock({ type: "text", cite: { url: "https://a.com" } });
+    expect(b.cites).toBeUndefined();
   });
 });
 
@@ -129,18 +135,90 @@ describe("merge", () => {
     expect(db.items.map((i) => i.blocks[0].src)).toEqual(["舊內容", "新內容"]);
     expect(db.items[0].id).not.toBe(db.items[1].id);
   });
-  it("normalizes sources on a newly-added item", () => {
+  it("carries a block's cites array through on import", () => {
     const { db, save, renderList } = setup();
-    merge({ items: [{ title: "t", blocks: [], sources: ["https://a.com", { url: "" }] }] }, db, save, renderList);
-    expect(db.items[0].sources).toEqual([{ url: "https://a.com", label: "" }]);
+    merge({ items: [{ title: "t", blocks: [{ type: "text", src: "x", cites: ["https://a.com"] }] }] }, db, save, renderList);
+    expect(db.items[0].blocks[0].cites).toEqual([{ url: "https://a.com", label: "" }]);
   });
-  it("replaces sources on an update only when the imported entry provides them", () => {
+  it("keeps at most one refs block per item, dropping extras instead of failing the import", () => {
     const { db, save, renderList } = setup();
-    merge({ items: [{ title: "t", blocks: [], sources: ["https://a.com"] }] }, db, save, renderList);
-    const id = db.items[0].id;
-    merge({ items: [{ id, title: "t", blocks: [] }] }, db, save, renderList); // 沒帶 sources
-    expect(db.items[0].sources).toEqual([{ url: "https://a.com", label: "" }]); // 維持原本的
-    merge({ items: [{ id, title: "t", blocks: [], sources: [] }] }, db, save, renderList); // 明確清空
-    expect(db.items[0].sources).toEqual([]);
+    merge(
+      {
+        items: [
+          {
+            title: "t",
+            blocks: [
+              { type: "refs", src: "https://a.com" },
+              { type: "text", src: "x" },
+              { type: "refs", src: "https://b.com" },
+            ],
+          },
+        ],
+      },
+      db,
+      save,
+      renderList,
+    );
+    const refsBlocks = db.items[0].blocks.filter((b) => b.type === "refs");
+    expect(refsBlocks).toHaveLength(1);
+    expect(refsBlocks[0].src).toBe("https://a.com");
+  });
+  it("silently ignores an old-format item.sources / block.cite import instead of crashing", () => {
+    const { db, save, renderList } = setup();
+    const r = merge(
+      { items: [{ title: "t", sources: ["https://a.com"], blocks: [{ type: "text", cite: { url: "https://b.com" } }] }] },
+      db,
+      save,
+      renderList,
+    );
+    expect(r.total).toBe(1);
+    expect(db.items[0].sources).toBeUndefined();
+    expect(db.items[0].blocks[0].cites).toBeUndefined();
+  });
+});
+
+describe("migrateLegacy", () => {
+  it("promotes an old singular block.cite into a cites array, keeping the original field", () => {
+    const db = { items: [{ id: "1", title: "t", blocks: [{ id: "b1", type: "text", cite: { url: "https://a.com", label: "A" } }] }] };
+    migrateLegacy(db);
+    expect(db.items[0].blocks[0].cites).toEqual([{ url: "https://a.com", label: "A" }]);
+    expect(db.items[0].blocks[0].cite).toEqual({ url: "https://a.com", label: "A" });
+  });
+  it("does not overwrite a cites array that already exists", () => {
+    const db = {
+      items: [
+        { id: "1", title: "t", blocks: [{ id: "b1", type: "text", cite: { url: "https://old.com" }, cites: [{ url: "https://new.com", label: "" }] }] },
+      ],
+    };
+    migrateLegacy(db);
+    expect(db.items[0].blocks[0].cites).toEqual([{ url: "https://new.com", label: "" }]);
+  });
+  it("turns an old item.sources array into an auto-created refs block when there isn't one yet", () => {
+    const db = { items: [{ id: "1", title: "t", sources: [{ url: "https://a.com", label: "A" }], blocks: [{ id: "b1", type: "text" }] }] };
+    migrateLegacy(db);
+    const refsBlocks = db.items[0].blocks.filter((b) => b.type === "refs");
+    expect(refsBlocks).toHaveLength(1);
+    expect(refsBlocks[0].src).toBe("https://a.com | A");
+  });
+  it("does not create a second refs block if one already exists", () => {
+    const db = {
+      items: [
+        {
+          id: "1",
+          title: "t",
+          sources: [{ url: "https://a.com" }],
+          blocks: [{ id: "b1", type: "refs", src: "https://existing.com" }],
+        },
+      ],
+    };
+    migrateLegacy(db);
+    const refsBlocks = db.items[0].blocks.filter((b) => b.type === "refs");
+    expect(refsBlocks).toHaveLength(1);
+    expect(refsBlocks[0].src).toBe("https://existing.com");
+  });
+  it("is a no-op on data with no legacy fields", () => {
+    const db = { items: [{ id: "1", title: "t", blocks: [{ id: "b1", type: "text", src: "x" }] }] };
+    migrateLegacy(db);
+    expect(db.items[0].blocks).toEqual([{ id: "b1", type: "text", src: "x" }]);
   });
 });

@@ -43,6 +43,10 @@ export function newItem() {
 export function addBlock(kind) {
   const it = state.db.items.find((i) => i.id === state.cur);
   if (!it) return;
+  if (kind === "refs" && (it.blocks || []).some((b) => b.type === "refs")) {
+    toast("這個詞條已經有一頁「參考連結」了");
+    return;
+  }
   const blk = { id: uid(), type: kind, title: "", src: "" };
   if (kind === "flow") {
     blk.mode = "page";

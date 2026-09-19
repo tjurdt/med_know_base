@@ -7,4 +7,5 @@ export const KINDS = {
   image: { icon: icons.image, name: "圖片" },
   keywords: { icon: icons.tag, name: "關鍵字" },
   calc: { icon: icons.calculator, name: "計算機" },
+  refs: { icon: icons.refs, name: "參考連結" },
 };

@@ -10,6 +10,7 @@ import { itemById, state } from "../store.js";
 import { renderFlowEditor } from "./flow-editor.js";
 import { renderTableEditor } from "./table-editor.js";
 import { renderCalcEditor } from "./calc-editor.js";
+import { renderRefsEditor } from "./refs-editor.js";
 import { mountCanvas } from "./canvas.js";
 
 /* 逐步模式 */
@@ -148,8 +149,11 @@ function blockEl(b, idx, label, layout) {
   d.dataset.bi = idx;
   d.dataset.bid = b.id;
   const editing = !!state.edit[b.id];
+  const isRefs = b.type === "refs";
   let body = "";
-  if (editing) {
+  if (isRefs) {
+    body = renderRefsEditor(b, itemById(state.cur));
+  } else if (editing) {
     if (b.type === "text") {
       body = `<div class="wystools">
           <button class="btn" data-wys="h3">標題</button>
@@ -199,25 +203,39 @@ function blockEl(b, idx, label, layout) {
     }
   }
   const dsc =
-    (b.type === "table" || b.type === "image" || b.type === "calc") && (editing || (b.desc || "").trim())
+    !isRefs && (b.type === "table" || b.type === "image" || b.type === "calc") && (editing || (b.desc || "").trim())
       ? `<div class="bdesc" contenteditable="plaintext-only" data-field="desc" data-ph="說明（選填）">${esc(b.desc || "")}</div>`
       : "";
-  const citeEditor = editing
-    ? `<div class="row" style="margin:-4px 0 8px">
-        <input class="citeinput" data-citeurl value="${esc((b.cite && b.cite.url) || "")}" placeholder="來源網址（選填）" style="flex:2">
-        <input class="citeinput" data-citelabel value="${esc((b.cite && b.cite.label) || "")}" placeholder="說明（選填）" style="flex:1">
-      </div>`
-    : "";
-  const citeLink =
-    !editing && b.cite && b.cite.url
-      ? `<a class="ib" href="${esc(b.cite.url)}" target="_blank" rel="noopener noreferrer" title="來源：${esc(b.cite.label || b.cite.url)}">${icons.link}</a>`
+  // 來源連結編輯區塊放在分頁內容最下面（不是像 Stage 6e 那樣放在最上面），且可以
+  // 新增不只一筆，比照 flow 出口列／calc 判讀區間的既有 outrow 增刪模式。見 plan
+  // Stage 7c。
+  const citeEditor =
+    !isRefs && editing
+      ? `<div class="citesection">${(b.cites || [])
+          .map(
+            (c, i) => `<div class="outrow" data-ci="${i}">
+        <input class="citeinput" data-citeurl value="${esc(c.url)}" placeholder="來源網址" style="flex:2">
+        <input class="citeinput" data-citelabel value="${esc(c.label)}" placeholder="說明（選填）" style="flex:1">
+        <button class="x" data-citedel title="移除">✕</button>
+      </div>`,
+          )
+          .join("")}<div class="row" style="margin-top:8px"><button class="btn bare" data-citeadd>＋ 來源連結</button></div></div>`
+      : "";
+  const citeLinks =
+    !isRefs && !editing && (b.cites || []).length
+      ? (b.cites || [])
+          .map(
+            (c) =>
+              `<a class="ib" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer" title="來源：${esc(c.label || c.url)}">${icons.link}</a>`,
+          )
+          .join("")
       : "";
   const showTitle = layout === "one" || editing || (b.title || "").trim();
   d.innerHTML = `<div class="bhead">
       <span class="bmark"><i>${KINDS[b.type].icon}</i>${idx + 1}</span>
       ${showTitle ? `<span class="btitle" contenteditable="plaintext-only" data-field="title" data-ph="${esc(label)}">${esc(b.title || "")}</span>` : '<span style="flex:1"></span>'}
       <span class="bacts">
-        ${citeLink}
+        ${citeLinks}
         <button class="btn ${editing ? "on" : "bare"}" data-edit>${editing ? "完成" : "編輯"}</button>
         <button class="btn bare" data-more title="更多">⋯</button>
       </span></div>
@@ -229,7 +247,7 @@ function blockEl(b, idx, label, layout) {
       <button class="btn bare danger" data-del>刪除分頁</button></div>`
         : ""
     }
-    <div class="bbody">${dsc}${citeEditor}${body}</div>`;
+    <div class="bbody">${dsc}${body}${citeEditor}</div>`;
   return d;
 }
 function imageView(b, idx) {

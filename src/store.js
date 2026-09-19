@@ -1,4 +1,5 @@
 import { load as loadStorage, STORAGE_KEY } from "./lib/storage.js";
+import { migrateLegacy } from "./lib/data-io.js";
 import { toast } from "./ui/toast.js";
 
 // 單一可變狀態容器：其他模組 import { state } 之後可以直接讀寫 state.xxx。
@@ -24,6 +25,7 @@ export const state = {
   tableRaw: {},
   calcCache: {},
   calcRaw: {},
+  refsCache: {},
   shown: [],
   pendingCsv: null,
   pendingImg: null,
@@ -34,7 +36,7 @@ export const state = {
 export function initStore() {
   const loaded = loadStorage(localStorage);
   state.memOnly = loaded.memOnly;
-  state.db = loaded.db;
+  state.db = migrateLegacy(loaded.db);
   return { memOnly: loaded.memOnly, quarantined: loaded.quarantined };
 }
 
