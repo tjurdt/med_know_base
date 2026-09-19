@@ -57,11 +57,12 @@ h1,h2,h3{font-weight:650;letter-spacing:-.005em;margin:0}
 .empty{color:var(--ink-3);font-size:13.5px;padding:18px 14px}
 
 /* 詞條 */
-.meta{padding:0 14px 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;
-      color:var(--ink-3);flex:0 0 auto}
-.meta .sub{flex:1;min-width:130px}
-.meta .sub:empty:before,.btitle:empty:before{content:attr(data-ph);color:var(--ink-3)}
-.tag{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);border-bottom:1px solid var(--line)}
+.btitle:empty:before{content:attr(data-ph);color:var(--ink-3)}
+.itemmenu{position:absolute;top:calc(var(--tap) + 2px);right:8px;z-index:5;
+  background:var(--surf);border:1px solid var(--line);border-radius:8px;
+  box-shadow:0 4px 16px rgba(20,14,10,.14);padding:6px;display:flex;flex-direction:column;
+  gap:2px;min-width:168px}
+.itemmenu .btn{justify-content:flex-start;text-align:left;border:0}
 
 .tabbar{display:flex;align-items:stretch;border-top:1px solid var(--line-2);
         border-bottom:1px solid var(--line);background:var(--surf);overflow-x:auto;
@@ -286,7 +287,7 @@ body[data-view="list"] #main{display:none}
 
 <main id="main">
   <div id="storageBanner" class="banner" hidden>此環境不能寫入本機儲存，編輯不會保存，請用「匯出」帶走。</div>
-  <div id="mainInner" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+  <div id="mainInner" style="display:flex;flex-direction:column;flex:1;min-height:0;position:relative"></div>
 </main>
 
 <input type="file" id="fileJson" accept=".json,application/json" hidden>

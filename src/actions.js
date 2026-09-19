@@ -24,7 +24,7 @@ export function openItem(id, tab) {
   state.curTab = tab !== undefined && tab >= 0 ? tab : 0;
   state.edit = {};
   state.tools = {};
-  state.metaOpen = false;
+  state.itemMenuOpen = false;
   setView("item");
   rerender();
 }

@@ -16,7 +16,7 @@ export const state = {
   listSel: -1,
   edit: {},
   tools: {},
-  metaOpen: false,
+  itemMenuOpen: false,
   flowState: {},
   flowCache: {},
   flowRaw: {},

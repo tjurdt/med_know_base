@@ -108,34 +108,19 @@ export function renderMain() {
       }</span></button>`;
     })
     .join("");
-  const showMeta = state.metaOpen || !!(it.subtitle || "").trim() || (it.tags || []).length;
+  const tagTitle = (it.tags || []).length ? `標籤：${it.tags.join("、")}` : "標籤";
 
   host.innerHTML = `
     <div class="bar">
       <button class="ib big back" data-golist aria-label="回索引">‹</button>
+      <button class="ib" data-tags title="${esc(tagTitle)}">${icons.tag}</button>
       <div class="ttl" contenteditable="plaintext-only" data-field="title">${esc(it.title)}</div>
-      <button class="ib" data-meta title="說明與標籤">⋯</button>
+      <button class="ib" data-itemmenu title="更多">⋯</button>
     </div>
-    <div class="meta" ${showMeta ? "" : "hidden"}>
-      <div class="row" style="width:100%">
-        <span class="sub" contenteditable="plaintext-only" data-field="subtitle" data-ph="一行說明">${esc(it.subtitle || "")}</span>
-        ${(it.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}
-        <button class="btn bare" data-tags>標籤</button>
-        <button class="btn bare" data-exportitem>匯出</button>
-        <button class="btn bare danger" data-delitem>刪除詞條</button>
-      </div>
-      <div class="sources" style="width:100%">
-        ${(it.sources || [])
-          .map(
-            (s, j) => `<div class="outrow" data-si="${j}">
-          <input class="citeinput" data-sourceurl value="${esc(s.url)}" placeholder="來源網址" style="flex:2">
-          <input class="citeinput" data-sourcelabel value="${esc(s.label || "")}" placeholder="說明（選填）" style="flex:1">
-          <button class="x" data-sourcedel title="移除這筆來源">✕</button>
-        </div>`,
-          )
-          .join("")}
-        <button class="btn bare" data-sourceadd>＋ 參考資料</button>
-      </div>
+    <div class="itemmenu" ${state.itemMenuOpen ? "" : "hidden"}>
+      <button class="btn bare" data-exportitem>匯出這個詞條</button>
+      <button class="btn bare" data-importmenu>匯入 JSON</button>
+      <button class="btn bare danger" data-delitem>刪除詞條</button>
     </div>
     <div class="tabbar">${tabs}
       <button class="tabadd" data-addblock title="新增分頁">＋</button>

@@ -27,7 +27,7 @@ export function renderList() {
       });
       return `<button class="entry ${x.it.id === state.cur ? "on" : ""}" data-open="${x.it.id}" data-tab="${x.hitTab ?? -1}">
       <div class="t">${qs.length ? hl(x.it.title, qs) : esc(x.it.title)}</div>
-      <div class="s">${seen.map((k) => KINDS[k].icon).join(" ")}${x.it.subtitle ? "　" + esc(x.it.subtitle) : ""}</div>
+      <div class="s">${seen.map((k) => KINDS[k].icon).join(" ")}</div>
       ${x.hit ? `<div class="hit">${hl(x.hit, qs)}</div>` : ""}</button>`;
     })
     .join("");

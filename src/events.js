@@ -84,9 +84,15 @@ export function initEvents() {
       renderList();
       return;
     }
-    if (hit("[data-meta]")) {
-      state.metaOpen = !state.metaOpen;
+    if (hit("[data-itemmenu]")) {
+      state.itemMenuOpen = !state.itemMenuOpen;
       renderMain();
+      return;
+    }
+    if (hit("[data-importmenu]")) {
+      state.itemMenuOpen = false;
+      $("#importMsg").textContent = "";
+      $("#dlgImport").showModal();
       return;
     }
     if (hit("[data-flip]")) {
