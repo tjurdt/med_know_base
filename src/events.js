@@ -3,7 +3,7 @@ import { strip } from "./lib/data-io.js";
 import { parseFlow } from "./lib/flow-parse.js";
 import { calcValues } from "./lib/calc.js";
 import { inlineMd, htmlToMd } from "./lib/markdown.js";
-import { state, save, setView, itemById } from "./store.js";
+import { state, save, setView, itemById, applySideCollapsed } from "./store.js";
 import { $ } from "./ui/toast.js";
 import { renderList } from "./ui/list.js";
 import { renderMain } from "./ui/item.js";
@@ -21,6 +21,11 @@ export function initEvents() {
     if (hit("[data-close]")) {
       const dl = t.closest("dialog");
       dl && dl.close();
+      return;
+    }
+    if (hit("[data-togglecollapse]")) {
+      state.sideCollapsed = !state.sideCollapsed;
+      applySideCollapsed();
       return;
     }
     if (hit("#newItem")) {

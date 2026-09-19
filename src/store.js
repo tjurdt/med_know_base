@@ -27,6 +27,7 @@ export const state = {
   shown: [],
   pendingCsv: null,
   pendingImg: null,
+  sideCollapsed: false,
 };
 
 // 由啟動流程呼叫一次；回傳值交給呼叫端決定要不要顯示 banner/toast（這裡不碰 DOM）。
@@ -54,3 +55,14 @@ export function setView(v) {
   document.body.dataset.view = v;
 }
 export const viewIs = (v) => document.body.dataset.view === v;
+
+// 純 UI 偏好，不落地存 localStorage（每次重新整理預設展開），只在桌面寬度有意義
+// （手機版本來就是 #side/#main 二選一顯示）。見 plan Stage 7a。
+export function applySideCollapsed() {
+  document.body.classList.toggle("side-collapsed", state.sideCollapsed);
+  const btn = document.getElementById("sideToggle");
+  if (btn) {
+    btn.textContent = state.sideCollapsed ? "»" : "«";
+    btn.title = state.sideCollapsed ? "展開側欄" : "收合側欄";
+  }
+}

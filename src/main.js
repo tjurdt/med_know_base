@@ -1,5 +1,5 @@
 "use strict";
-import { initStore, setView } from "./store.js";
+import { initStore, setView, applySideCollapsed } from "./store.js";
 import { $, toast } from "./ui/toast.js";
 import { initEvents } from "./events.js";
 import { rerender } from "./actions.js";
@@ -13,4 +13,5 @@ initEvents();
 /* 啟動 */
 $("#specBox").textContent = document.getElementById("specSrc").textContent.trim();
 setView("list");
+applySideCollapsed();
 rerender();
